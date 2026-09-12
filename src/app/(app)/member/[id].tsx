@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bloub } from '../../../components/Bloub';
 import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import { api } from '../../../../convex/_generated/api';
@@ -27,6 +28,7 @@ export default function MemberDetailScreen() {
   const me = useMe();
   const { circle, members, loading } = useCircle();
   const haptic = useHaptics();
+  const insets = useSafeAreaInsets();
 
   const member = members.find((m) => m._id === id);
   const crumbs = useQuery(
@@ -88,7 +90,7 @@ export default function MemberDetailScreen() {
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.chevron}>
           <Text style={styles.chevronText}>‹</Text>
         </Pressable>

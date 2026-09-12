@@ -155,70 +155,74 @@ export default function Chat() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <Text style={styles.title}>Chat</Text>
-      {messages !== undefined && rows.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Bloub
-            size={120}
-            shape="capsule"
-            color={colors.sky}
-            expression="excite"
-            state="idle"
-            paper={colors.cream}
-            animate
-          />
-          <Text style={styles.emptyTitle}>Say hi to the nest</Text>
-          <Text style={styles.emptySub}>
-            Quick updates, funny moments, and check-ins live here.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={rows}
-          renderItem={renderItem}
-          keyExtractor={(r) => r.key}
-          inverted
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
-      <View style={styles.composer}>
-        {toMember && !chipDismissed ? (
-          <View style={styles.chipRow}>
-            <View style={styles.chip}>
-              <Text style={styles.chipText}>Messaging {toMember.name}</Text>
-              <Pressable hitSlop={8} onPress={() => setChipDismissed(true)}>
-                <Text style={styles.chipX}>✕</Text>
-              </Pressable>
-            </View>
+    <View style={styles.flex}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <Text style={styles.title}>Chat</Text>
+        {messages !== undefined && rows.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Bloub
+              size={120}
+              shape="capsule"
+              color={colors.sky}
+              expression="excite"
+              state="idle"
+              paper={colors.cream}
+              animate
+            />
+            <Text style={styles.emptyTitle}>Say hi to the nest</Text>
+            <Text style={styles.emptySub}>
+              Quick updates, funny moments, and check-ins live here.
+            </Text>
           </View>
-        ) : null}
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={text}
-            onChangeText={setText}
-            placeholder="Message the nest…"
-            placeholderTextColor={colors.inkFaint}
-            multiline
+        ) : (
+          <FlatList
+            data={rows}
+            renderItem={renderItem}
+            keyExtractor={(r) => r.key}
+            inverted
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
           />
-          <Pressable
-            onPress={onSend}
-            disabled={!text.trim()}
-            style={({ pressed }) => [
-              styles.send,
-              (!text.trim() || pressed) && { opacity: 0.5 },
-            ]}
-          >
-            <Text style={styles.sendIcon}>➤</Text>
-          </Pressable>
+        )}
+        <View style={styles.composer}>
+          {toMember && !chipDismissed ? (
+            <View style={styles.chipRow}>
+              <View style={styles.chip}>
+                <Text style={styles.chipText}>Messaging {toMember.name}</Text>
+                <Pressable hitSlop={8} onPress={() => setChipDismissed(true)}>
+                  <Text style={styles.chipX}>✕</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              value={text}
+              onChangeText={setText}
+              placeholder="Message the nest…"
+              placeholderTextColor={colors.inkFaint}
+              multiline
+            />
+            <Pressable
+              onPress={onSend}
+              disabled={!text.trim()}
+              android_ripple={{ color: 'transparent', foreground: false }}
+              style={({ pressed }) => [
+                styles.send,
+                (!text.trim() || pressed) && { opacity: 0.5 },
+              ]}
+            >
+              <Text style={styles.sendIcon}>➤</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 

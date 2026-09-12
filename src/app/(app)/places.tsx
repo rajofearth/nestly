@@ -55,6 +55,7 @@ export default function PlacesScreen() {
   const removeFn = useMutation(api.places.remove);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [editingPlace, setEditingPlace] = useState<Place | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Place | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -70,6 +71,7 @@ export default function PlacesScreen() {
     try {
       await removeFn({ token, placeId: removeTarget._id });
       hapticSuccess();
+      setEditingPlace(null);
       setRemoveTarget(null);
     } catch {
       haptic('medium');
@@ -146,6 +148,10 @@ export default function PlacesScreen() {
                 </View>
                 <Pressable
                   style={StyleSheet.absoluteFill}
+                  onPress={() => {
+                    haptic('light');
+                    setEditingPlace(place);
+                  }}
                   onLongPress={() => {
                     haptic('medium');
                     setRemoveTarget(place);
@@ -178,7 +184,14 @@ export default function PlacesScreen() {
         )}
       </ScrollView>
 
-      <AddPlaceSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <PlaceSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+
+      <PlaceSheet
+        visible={!!editingPlace}
+        onClose={() => setEditingPlace(null)}
+        editing={editingPlace}
+        onRemove={(place) => setRemoveTarget(place)}
+      />
 
       <Sheet
         visible={!!removeTarget}
@@ -194,9 +207,21 @@ export default function PlacesScreen() {
   );
 }
 
-function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function PlaceSheet({
+  visible,
+  onClose,
+  editing,
+  onRemove,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  editing?: Place | null;
+  onRemove?: (place: Place) => void;
+}) {
   const token = useMyToken();
   const haptic = useHaptics();
+
+  const isEdit = !!editing;
 
   const [step, setStep] = useState<Step>('details');
   const [name, setName] = useState('');
@@ -212,18 +237,31 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
   useEffect(() => {
     if (!visible) return;
     setStep('details');
-    setPicked(null);
-    (async () => {
-      try {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        setMyLoc({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      } catch {
-        setMyLoc(null);
-      }
-    })();
-  }, [visible]);
+    if (editing) {
+      setName(editing.name);
+      setRadiusM(editing.radiusM);
+      setNotifyOnArrive(editing.notifyOnArrive);
+      setNotifyOnLeave(editing.notifyOnLeave);
+      setPicked({ lat: editing.lat, lng: editing.lng });
+      setMyLoc({ lat: editing.lat, lng: editing.lng });
+    } else {
+      setName('');
+      setRadiusM(150);
+      setNotifyOnArrive(true);
+      setNotifyOnLeave(false);
+      setPicked(null);
+      (async () => {
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          setMyLoc({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        } catch {
+          setMyLoc(null);
+        }
+      })();
+    }
+  }, [visible, editing]);
 
   const openMap = useCallback(() => {
     haptic('light');
@@ -243,28 +281,37 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
   }, [haptic]);
 
   const addFn = useMutation(api.places.add);
+  const updateFn = useMutation(api.places.update);
 
-  async function doAdd() {
-    if (!token || !picked) return;
+  async function doSave() {
+    if (!token) return;
+    if (!isEdit && !picked) return;
     setBusy(true);
     try {
-      await addFn({
-        token,
-        name: name.trim() || 'New place',
-        emoji: '',
-        lat: picked.lat,
-        lng: picked.lng,
-        radiusM,
-        notifyOnArrive,
-        notifyOnLeave,
-      });
+      if (editing) {
+        await updateFn({
+          token,
+          placeId: editing._id,
+          name: name.trim() || editing.name,
+          ...(picked ? { lat: picked.lat, lng: picked.lng } : {}),
+          radiusM,
+          notifyOnArrive,
+          notifyOnLeave,
+        });
+      } else {
+        await addFn({
+          token,
+          name: name.trim() || 'New place',
+          emoji: '',
+          lat: picked!.lat,
+          lng: picked!.lng,
+          radiusM,
+          notifyOnArrive,
+          notifyOnLeave,
+        });
+      }
       hapticSuccess();
       onClose();
-      setName('');
-      setRadiusM(150);
-      setNotifyOnArrive(true);
-      setNotifyOnLeave(false);
-      setPicked(null);
     } catch {
       haptic('medium');
     } finally {
@@ -284,12 +331,12 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
               contentContainerStyle={styles.sheetContent}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.sheetTitle}>Add a place</Text>
+              <Text style={styles.sheetTitle}>{isEdit ? 'Edit place' : 'Add a place'}</Text>
               <Input
                 value={name}
                 onChangeText={(t) => setName(t.slice(0, 24))}
                 placeholder="e.g. Home, School, Grandma"
-                autoFocus
+                autoFocus={!isEdit}
               />
               <Text style={styles.fieldLabel}>How close counts?</Text>
               <View style={styles.radiusRow}>
@@ -305,7 +352,21 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                   </Pressable>
                 ))}
               </View>
-              <Button label="Pick the spot on the map" onPress={openMap} />
+              <Button
+                label={isEdit ? 'Adjust the spot on the map' : 'Pick the spot on the map'}
+                onPress={openMap}
+              />
+              {isEdit && editing ? (
+                <Pressable
+                  onPress={() => {
+                    haptic('medium');
+                    onRemove?.(editing);
+                  }}
+                  style={styles.removeLink}
+                >
+                  <Text style={styles.removeLinkText}>Remove this place</Text>
+                </Pressable>
+              ) : null}
             </ScrollView>
           ) : null}
 
@@ -334,7 +395,11 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                   <View style={styles.crosshairBarV} />
                 </View>
               </View>
-              <Button label="Pin it here" onPress={pinHere} disabled={!myLoc} />
+              <Button
+                label="Pin it here"
+                onPress={pinHere}
+                disabled={!myLoc}
+              />
               <Button
                 label="Back"
                 variant="ghost"
@@ -352,7 +417,9 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
               <Text style={styles.sheetTitle}>Looks good?</Text>
               <View style={styles.summaryCard}>
                 <View style={styles.summaryMid}>
-                  <Text style={styles.summaryName}>{name.trim() || 'New place'}</Text>
+                  <Text style={styles.summaryName}>
+                    {name.trim() || (isEdit ? editing?.name : 'New place')}
+                  </Text>
                   <Text style={styles.summaryMeta}>
                     within {radiusM} m · {picked.lat.toFixed(4)}, {picked.lng.toFixed(4)}
                   </Text>
@@ -376,7 +443,11 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                   thumbColor={colors.white}
                 />
               </View>
-              <Button label="Add place" onPress={doAdd} loading={busy} />
+              <Button
+                label={isEdit ? 'Save changes' : 'Add place'}
+                onPress={doSave}
+                loading={busy}
+              />
               <Button
                 label="Back"
                 variant="ghost"
@@ -605,4 +676,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.s,
   },
   toggleLabel: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  removeLink: { alignItems: 'center', paddingVertical: spacing.m },
+  removeLinkText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.danger,
+    fontFamily: 'Nunito_700Bold',
+  },
 });

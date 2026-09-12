@@ -1,5 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
@@ -17,10 +31,30 @@ import { Sheet } from '../../components/ui/Sheet';
 import { Button } from '../../components/ui/Button';
 import { hapticError, hapticSuccess, useHaptics } from '../../hooks/useHaptics';
 import { recordLiveLocation } from '../../services/tracking';
-import type { CameraRef } from '@maplibre/maplibre-react-native';
+import type { CameraRef, MapRef } from '@maplibre/maplibre-react-native';
 import type { NestlyUser } from '../../lib/identity';
 
 type Mood = ReturnType<typeof memberMood>;
+
+type MarkerEntry = { id: string; lngLat: [number, number]; member: NestlyUser };
+type EdgeEntry = {
+  id: string;
+  member: NestlyUser;
+  lngLat: [number, number];
+  x: number;
+  y: number;
+};
+
+const SOS_SIZE = 64;
+const CHIP_ROW_HEIGHT = 52;
+const CHIP_GAP = 10;
+const CHIP_INTERVAL = 170;
+const INDICATOR_SIZE = 32;
+const MAX_INDICATORS = 6;
+const EDGE_PAD_X = 12;
+const EDGE_PAD_BOTTOM = CHIP_ROW_HEIGHT + spacing.m + 12;
+const RECOMPUTE_MS = 250;
+const FOCUS_ZOOM = 15;
 
 function statusWord(mood: Mood, member: NestlyUser): string {
   switch (mood.state) {
@@ -39,6 +73,19 @@ function statusWord(mood: Mood, member: NestlyUser): string {
   }
 }
 
+// The Bloub engine's 'sleep' pose collapses the whole body to a tiny dot
+// (circle r=0.1585), so offline members rendered as dots on the map. Keep
+// their mood-driven sleepy expression but show it on a visible idle body.
+function visibleState(mood: Mood): string {
+  return mood.state === 'sleep' ? 'idle' : mood.state;
+}
+
+function memberPos(member: NestlyUser, meId: string | undefined, myLoc: [number, number] | null): [number, number] | null {
+  if (member._id === meId && myLoc) return myLoc;
+  if (member.lat != null && member.lng != null) return [member.lng, member.lat];
+  return null;
+}
+
 export default function NestScreen() {
   const router = useRouter();
   const token = useMyToken();
@@ -49,9 +96,12 @@ export default function NestScreen() {
   const insets = useSafeAreaInsets();
   const haptic = useHaptics();
 
+  const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
   const [perm, setPerm] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [myLoc, setMyLoc] = useState<[number, number] | null>(null);
+  const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
+  const [offscreen, setOffscreen] = useState<EdgeEntry[]>([]);
   const [sosOpen, setSosOpen] = useState(false);
   const [sentAt, setSentAt] = useState<number | null>(null);
   const sendSos = useMutation(api.alerts.sos);
@@ -115,16 +165,125 @@ export default function NestScreen() {
   }, [myLoc]);
 
   const markers = useMemo(() => {
-    const list: { id: string; lngLat: [number, number]; member: NestlyUser }[] = [];
+    const list: MarkerEntry[] = [];
     for (const m of members) {
-      const isMe = m._id === user?._id;
-      const pos: [number, number] | null =
-        isMe && myLoc ? myLoc : m.lat != null && m.lng != null ? [m.lng, m.lat] : null;
+      const pos = memberPos(m, user?._id, myLoc);
       if (!pos) continue;
       list.push({ id: m._id, lngLat: pos, member: m });
     }
     return list;
   }, [members, user, myLoc]);
+
+  const focusMember = useCallback((lngLat: [number, number]) => {
+    cameraRef.current?.easeTo({ center: lngLat, zoom: FOCUS_ZOOM, duration: 600 });
+  }, []);
+
+  const markersRef = useRef(markers);
+  markersRef.current = markers;
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const insetsRef = useRef(insets);
+  insetsRef.current = insets;
+  const recomputeSeq = useRef(0);
+  const throttleRef = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({
+    last: 0,
+    timer: null,
+  });
+  const offscreenSig = useRef('');
+
+  const computeOffscreen = useCallback(async () => {
+    const map = mapRef.current;
+    const vp = viewportRef.current;
+    if (!map || !vp) return;
+    const seq = ++recomputeSeq.current;
+    const top = insetsRef.current.top + 68;
+    const bottom = EDGE_PAD_BOTTOM;
+    const cx = vp.w / 2;
+    const cy = vp.h / 2;
+    const found: EdgeEntry[] = [];
+    const dists: number[] = [];
+    for (const mk of markersRef.current) {
+      try {
+        const pt = await map.project(mk.lngLat);
+        if (seq !== recomputeSeq.current) return;
+        const px = pt[0];
+        const py = pt[1];
+        if (
+          px >= EDGE_PAD_X &&
+          px <= vp.w - EDGE_PAD_X &&
+          py >= top &&
+          py <= vp.h - bottom
+        ) {
+          continue;
+        }
+        const dx = px - cx;
+        const dy = py - cy;
+        let t = Infinity;
+        if (dx < 0) t = Math.min(t, (EDGE_PAD_X - cx) / dx);
+        if (dx > 0) t = Math.min(t, (vp.w - EDGE_PAD_X - cx) / dx);
+        if (dy < 0) t = Math.min(t, (top - cy) / dy);
+        if (dy > 0) t = Math.min(t, (vp.h - bottom - cy) / dy);
+        if (!Number.isFinite(t)) continue;
+        found.push({
+          id: mk.id,
+          member: mk.member,
+          lngLat: mk.lngLat,
+          x: cx + dx * t - INDICATOR_SIZE / 2,
+          y: cy + dy * t - INDICATOR_SIZE / 2,
+        });
+        dists.push(dx * dx + dy * dy);
+      } catch {
+        // map not ready to project — skip this member
+      }
+    }
+    if (seq !== recomputeSeq.current) return;
+    const next = found
+      .map((entry, i) => ({ entry, d: dists[i] ?? 0 }))
+      .sort((a, b) => b.d - a.d)
+      .slice(0, MAX_INDICATORS)
+      .map((r) => r.entry);
+    const sig = next
+      .map((e) => `${e.id}:${Math.round(e.x)},${Math.round(e.y)}`)
+      .join('|');
+    if (sig === offscreenSig.current) return;
+    offscreenSig.current = sig;
+    setOffscreen(next);
+  }, []);
+
+  const scheduleRecompute = useCallback(() => {
+    const st = throttleRef.current;
+    const now = Date.now();
+    const run = () => {
+      st.last = Date.now();
+      void computeOffscreen();
+    };
+    if (now - st.last >= RECOMPUTE_MS) {
+      run();
+    } else if (st.timer == null) {
+      st.timer = setTimeout(() => {
+        st.timer = null;
+        run();
+      }, RECOMPUTE_MS - (now - st.last));
+    }
+  }, [computeOffscreen]);
+
+  useEffect(() => {
+    scheduleRecompute();
+  }, [scheduleRecompute, markers, viewport]);
+
+  useEffect(
+    () => () => {
+      if (throttleRef.current.timer != null) clearTimeout(throttleRef.current.timer);
+    },
+    [],
+  );
+
+  const onMapLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setViewport((prev) =>
+      prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+    );
+  }, []);
 
   const onSos = async () => {
     if (!token) return;
@@ -134,6 +293,7 @@ export default function NestScreen() {
       hapticSuccess();
       setSentAt(Date.now());
     } catch {
+      hapticError();
       setSosOpen(true);
     }
   };
@@ -154,8 +314,15 @@ export default function NestScreen() {
   const showGuidance = others.length === 0 && !loading;
 
   return (
-    <View style={styles.page}>
-      <Map mapStyle={MAP_STYLE_URL} style={{ flex: 1 }} compassPosition={{ top: 8, right: 8 }}>
+    <View style={styles.page} onLayout={onMapLayout}>
+      <Map
+        ref={mapRef}
+        mapStyle={MAP_STYLE_URL}
+        style={{ flex: 1 }}
+        compassPosition={{ top: 8, right: 8 }}
+        onRegionIsChanging={scheduleRecompute}
+        onRegionDidChange={scheduleRecompute}
+      >
         <Camera ref={cameraRef} initialViewState={{ zoom: 13 }} maxZoom={18} />
         {markers.map((mk) => {
           const mood = memberMood(mk.member);
@@ -171,6 +338,30 @@ export default function NestScreen() {
           );
         })}
       </Map>
+
+      {offscreen.map((edge) => {
+        const mood = memberMood(edge.member);
+        return (
+          <Pressable
+            key={edge.id}
+            hitSlop={8}
+            onPress={() => focusMember(edge.lngLat)}
+            style={({ pressed }) => [
+              styles.edgeIndicator,
+              { left: edge.x, top: edge.y },
+              pressed && { opacity: 0.8 },
+              shadow.float,
+            ]}
+          >
+            <MemberAvatar
+              avatar={edge.member.avatar}
+              size={INDICATOR_SIZE}
+              state={visibleState(mood)}
+              expression={mood.expression}
+            />
+          </Pressable>
+        );
+      })}
 
       <View
         pointerEvents="box-none"
@@ -208,23 +399,29 @@ export default function NestScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          pointerEvents="box-none"
-          contentContainerStyle={styles.chips}
+          decelerationRate="fast"
+          snapToInterval={CHIP_INTERVAL}
           style={[styles.chipRow, { bottom: spacing.m }]}
+          contentContainerStyle={styles.chips}
         >
           {members.map((m) => {
             const mood = memberMood(m);
             return (
               <Pressable
                 key={m._id}
-                onPress={() => router.push(`/member/${m._id}`)}
+                onPress={() => {
+                  const pos = memberPos(m, user?._id, myLoc);
+                  if (pos) {
+                    haptic();
+                    focusMember(pos);
+                  }
+                }}
                 style={({ pressed }) => [styles.chip, pressed && { opacity: 0.7 }, shadow.card]}
               >
                 <MemberAvatar
                   avatar={m.avatar}
-                  role={m.role}
                   size={36}
-                  state={mood.state}
+                  state={visibleState(mood)}
                   expression={mood.expression}
                 />
                 <View style={styles.chipText}>
@@ -244,7 +441,10 @@ export default function NestScreen() {
       {showGuidance ? (
         <View
           pointerEvents="box-none"
-          style={[styles.guidanceWrap, { bottom: spacing.m + 64 + spacing.s }]}
+          style={[
+            styles.guidanceWrap,
+            { bottom: spacing.m + CHIP_ROW_HEIGHT + spacing.s },
+          ]}
         >
           <View style={[styles.guidanceCard, shadow.float]}>
             <MemberAvatar
@@ -268,12 +468,10 @@ export default function NestScreen() {
       ) : null}
 
       <Pressable
-        delayLongPress={1500}
-        onLongPress={() => {
-          hapticError();
+        onPress={() => {
+          haptic();
           setSosOpen(true);
         }}
-        onPressIn={() => haptic()}
         style={({ pressed }) => [
           styles.sos,
           sentAt != null && { backgroundColor: colors.mint },
@@ -287,7 +485,7 @@ export default function NestScreen() {
         <Text style={styles.sheetTitle}>Send SOS to everyone in {circle?.name}?</Text>
         <View style={styles.sheetRow}>
           <Button label="Cancel" variant="secondary" onPress={() => setSosOpen(false)} />
-          <Button label="Send" variant="danger" onPress={onSos} />
+          <Button label="Send SOS" variant="danger" onPress={onSos} />
         </View>
       </Sheet>
     </View>
@@ -312,9 +510,8 @@ const MarkerItem = React.memo(function MarkerItem({
       <View style={styles.markerView}>
         <MemberAvatar
           avatar={member.avatar}
-          role={member.role}
-          size={40}
-          state={mood.state}
+          size={44}
+          state={visibleState(mood)}
           expression={mood.expression}
         />
         <View style={styles.markerLabel}>
@@ -389,13 +586,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   permTitle: { ...typography.body, textAlign: 'center' },
+  edgeIndicator: {
+    position: 'absolute',
+    width: INDICATOR_SIZE,
+    height: INDICATOR_SIZE,
+    borderRadius: INDICATOR_SIZE / 2,
+    borderWidth: 2,
+    borderColor: colors.white,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
   sos: {
     position: 'absolute',
     right: spacing.l,
-    bottom: spacing.m + 64 + spacing.s,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    bottom: spacing.m + CHIP_ROW_HEIGHT + spacing.s,
+    width: SOS_SIZE,
+    height: SOS_SIZE,
+    borderRadius: SOS_SIZE / 2,
     backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
@@ -421,7 +628,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginLeft: spacing.l,
-    marginRight: spacing.l + 64 + spacing.s,
+    marginRight: spacing.l + SOS_SIZE + spacing.s,
     padding: spacing.m,
   },
   guidanceText: { flex: 1, gap: 2 },
@@ -431,8 +638,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   guidanceSub: { ...typography.small, fontSize: 12, lineHeight: 16 },
-  chipRow: { position: 'absolute', left: 0, right: 0 },
-  chips: { gap: spacing.s, paddingHorizontal: spacing.l },
+  chipRow: { position: 'absolute', left: 0, right: 0, height: CHIP_ROW_HEIGHT },
+  chips: {
+    gap: CHIP_GAP,
+    paddingHorizontal: spacing.l,
+    alignItems: 'center',
+    height: CHIP_ROW_HEIGHT,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

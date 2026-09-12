@@ -47,6 +47,34 @@ export const add = mutation({
   },
 });
 
+export const update = mutation({
+  args: {
+    token: v.string(),
+    placeId: v.id("places"),
+    name: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    radiusM: v.optional(v.number()),
+    notifyOnArrive: v.optional(v.boolean()),
+    notifyOnLeave: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { token, placeId, name, lat, lng, radiusM, notifyOnArrive, notifyOnLeave }) => {
+    const { circleId } = await requireCircleUser(ctx, token);
+    const place = await ctx.db.get(placeId);
+    if (!place || place.circleId !== circleId) {
+      throw new Error("Place not found in your circle");
+    }
+    await ctx.db.patch(placeId, {
+      ...(name !== undefined ? { name } : {}),
+      ...(lat !== undefined ? { lat } : {}),
+      ...(lng !== undefined ? { lng } : {}),
+      ...(radiusM !== undefined ? { radiusM } : {}),
+      ...(notifyOnArrive !== undefined ? { notifyOnArrive } : {}),
+      ...(notifyOnLeave !== undefined ? { notifyOnLeave } : {}),
+    });
+  },
+});
+
 export const remove = mutation({
   args: { token: v.string(), placeId: v.id("places") },
   handler: async (ctx, { token, placeId }) => {
