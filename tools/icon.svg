@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#FFF8EE"/>
+
+  <!-- soft ground shadow -->
+  <ellipse cx="512" cy="760" rx="300" ry="42" fill="#E9DCC8" opacity="0.6"/>
+
+  <!-- Mom: big rose cloud -->
+  <g>
+    <path d="M 356 470
+             C 356 384 420 330 500 330
+             C 580 330 644 384 644 470
+             C 644 556 580 610 500 610
+             C 420 610 356 556 356 470 Z"
+          fill="#E152B0"/>
+    <!-- cloud bumps -->
+    <circle cx="420" cy="392" r="52" fill="#E152B0"/>
+    <circle cx="580" cy="392" r="52" fill="#E152B0"/>
+    <circle cx="500" cy="352" r="58" fill="#E152B0"/>
+    <!-- eyes: two white ellipses, bloub lean -->
+    <ellipse cx="462" cy="466" rx="17" ry="26" transform="rotate(26 462 466)" fill="#FFF8EE"/>
+    <ellipse cx="538" cy="466" rx="17" ry="26" transform="rotate(26 538 466)" fill="#FFF8EE"/>
+  </g>
+
+  <!-- Dad: amber droplet -->
+  <g>
+    <path d="M 700 470
+             C 760 500 788 548 788 596
+             C 788 664 732 712 664 712
+             C 596 712 540 664 540 596
+             C 540 548 568 500 628 470
+             C 646 430 682 430 700 470 Z"
+          fill="#F0A93B"/>
+    <ellipse cx="628" cy="592" rx="14" ry="22" transform="rotate(26 628 592)" fill="#FFF8EE"/>
+    <ellipse cx="700" cy="592" rx="14" ry="22" transform="rotate(26 700 592)" fill="#FFF8EE"/>
+  </g>
+
+  <!-- Kid: small mint circle -->
+  <g>
+    <circle cx="300" cy="640" r="110" fill="#2FA37C"/>
+    <ellipse cx="268" cy="592" rx="11" ry="17" transform="rotate(26 268 592)" fill="#FFF8EE"/>
+    <ellipse cx="332" cy="592" rx="11" ry="17" transform="rotate(26 332 592)" fill="#FFF8EE"/>
+  </g>
+</svg>

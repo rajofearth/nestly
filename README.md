@@ -1,56 +1,46 @@
-# Welcome to your Expo app 👋
+# Nestly
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Your family, always within reach. Live location, speed, device status, places,
+check-ins, chat and SOS — in one cozy place, with a family of bloub avatars.
 
-## Get started
+## Stack
 
-1. Install dependencies
+| | |
+| --- | --- |
+| App | Expo SDK 57 / RN 0.86 / expo-router, TypeScript strict |
+| Backend | Convex (cloud, team `rajofearth-proton-me`, project `nestly`, deployment `adept-whale-546`) — realtime DB + push scheduling |
+| Maps | MapLibre React Native v11 + free OpenFreeMap Liberty tiles (no API key) |
+| Avatars | Bloub engine (ported from jeremy-prt/bloub, MIT), rendered with react-native-svg |
 
-   ```bash
-   npm install
-   ```
+## APK
 
-2. Start the app
+`.build-outputs/nestly-v1.0.0.apk` — universal release APK signed with the debug
+keystore (test build). Install on physical devices; no emulator needed.
 
-   ```bash
-   npx expo start
-   ```
+## Build
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+pnpm install
+npx convex dev --once          # push backend (already deployed)
+npx expo prebuild --platform android --clean
+cd android && .\gradlew assembleRelease
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Windows-specific notes (hoisted node-linker, arm64-only builds, CMake/ninja
+cleanup): see `docs/BUILD_WINDOWS.md`.
 
-### Other setup steps
+## Docs
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+| Doc | Contents |
+| --- | --- |
+| `docs/ARCHITECTURE.md` | System overview, route map, bloub engine, backend tables/functions, push pipeline, background tracking, auth model |
+| `docs/CONTRACT.md` | Shared API contract — schema, function signatures, conventions |
+| `docs/BUILD_WINDOWS.md` | Windows build setup and troubleshooting |
+| `docs/PUSH_SETUP.md` | Enabling Android push (Firebase config, FCM v1 credentials) |
+| `docs/TESTING.md` | 2-device manual test script |
 
-## Learn more
+## Conventions
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- All screens read live data through Convex subscriptions — no manual refresh.
+- Member mood/expression logic lives in `src/lib/memberStatus.ts` — the bloub
+  avatars react to battery, movement, staleness and SOS from there.
