@@ -1,6 +1,6 @@
 import '../services/tracking';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,8 +8,15 @@ import { useFonts, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold, Nunito
 import { useIdentity } from '../lib/identity';
 import { colors } from '../theme/tokens';
 import { SplashGate } from '../components/SplashGate';
+import { CrashBoundary } from '../components/CrashBoundary';
+import { installGlobalErrorHandlers, logEvent } from '../services/logger';
 
-const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL ?? '';
+installGlobalErrorHandlers();
+
+const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
+if (!convexUrl || !convexUrl.includes('://')) {
+  throw new Error('EXPO_PUBLIC_CONVEX_URL missing — rebuild with .env present');
+}
 const convex = new ConvexReactClient(convexUrl, { unsavedChangesWarning: false });
 
 function RootGate() {
@@ -20,10 +27,18 @@ function RootGate() {
     Nunito_700Bold,
     Nunito_800ExtraBold,
   });
+  const loggedOpen = useRef(false);
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    if (loaded && !loggedOpen.current) {
+      loggedOpen.current = true;
+      logEvent('app-open', 'fonts loaded, app mounted');
+    }
+  }, [loaded]);
 
   if (!loaded || status === 'loading') return <SplashGate />;
 
@@ -48,7 +63,9 @@ function RootGate() {
 export default function RootLayout() {
   return (
     <ConvexProvider client={convex}>
-      <RootGate />
+      <CrashBoundary>
+        <RootGate />
+      </CrashBoundary>
     </ConvexProvider>
   );
 }

@@ -14,6 +14,7 @@ import type * as chat from "../chat.js";
 import type * as checkins from "../checkins.js";
 import type * as circles from "../circles.js";
 import type * as lib_helpers from "../lib/helpers.js";
+import type * as logs from "../logs.js";
 import type * as places from "../places.js";
 import type * as presence from "../presence.js";
 import type * as push from "../push.js";
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   checkins: typeof checkins;
   circles: typeof circles;
   "lib/helpers": typeof lib_helpers;
+  logs: typeof logs;
   places: typeof places;
   presence: typeof presence;
   push: typeof push;

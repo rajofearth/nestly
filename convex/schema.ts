@@ -88,6 +88,22 @@ export default defineSchema({
     ts: v.number(),
   }).index("by_circle_ts", ["circleId", "ts"]),
 
+  logs: defineTable({
+    ts: v.number(),
+    level: v.union(
+      v.literal("crash"),
+      v.literal("error"),
+      v.literal("warn"),
+      v.literal("info"),
+    ),
+    tag: v.string(),
+    message: v.string(),
+    stack: v.optional(v.string()),
+    device: v.optional(v.string()),
+    appVersion: v.optional(v.string()),
+    userIdTokenHash: v.optional(v.string()),
+  }).index("by_ts", ["ts"]),
+
   alerts: defineTable({
     circleId: v.id("circles"),
     type: v.union(
