@@ -12,31 +12,30 @@ import { timeAgo } from '../../lib/utils';
 
 type Alert = Doc<'alerts'>;
 
-const ICONS: Record<Alert['type'], { emoji: string; bg: string }> = {
-  sos: { emoji: '🆘', bg: colors.coralSoft },
-  memberJoined: { emoji: '🎉', bg: colors.lilacSoft },
-  arrive: { emoji: '📍', bg: colors.mintSoft },
-  leave: { emoji: '👋', bg: colors.creamDeep },
-  checkin: { emoji: '✅', bg: colors.skySoft },
-  batteryLow: { emoji: '🪫', bg: colors.amberSoft },
+const TAGS: Record<Alert['type'], { label: string; bg: string }> = {
+  sos: { label: 'SOS', bg: colors.coralSoft },
+  memberJoined: { label: 'New', bg: colors.lilacSoft },
+  arrive: { label: 'In', bg: colors.mintSoft },
+  leave: { label: 'Out', bg: colors.creamDeep },
+  checkin: { label: 'Safe', bg: colors.skySoft },
+  batteryLow: { label: 'Batt', bg: colors.amberSoft },
 };
 
 function derive(alert: Alert, name: string): { title: string; body: string } {
   const p = (alert.payload ?? {}) as {
     name?: string;
     placeName?: string;
-    emoji?: string;
     kind?: string;
   };
   switch (alert.type) {
     case 'sos':
       return { title: `SOS from ${name}`, body: `${name} needs help right now` };
     case 'memberJoined':
-      return { title: `${p.name ?? name} joined the nest`, body: 'Say welcome 👋' };
+      return { title: `${p.name ?? name} joined the nest`, body: 'Say welcome' };
     case 'arrive':
-      return { title: `${name} arrived`, body: `${p.emoji ?? '📍'} ${p.placeName ?? 'a place'}` };
+      return { title: `${name} arrived`, body: p.placeName ?? 'a place' };
     case 'leave':
-      return { title: `${name} left`, body: `${p.emoji ?? '📍'} ${p.placeName ?? 'a place'}` };
+      return { title: `${name} left`, body: p.placeName ?? 'a place' };
     case 'checkin':
       return p.kind === 'responded'
         ? { title: `${name} checked in`, body: 'They marked themselves as OK' }
@@ -75,13 +74,16 @@ export default function Alerts() {
         <Pressable hitSlop={12} style={styles.back} onPress={() => router.back()}>
           <Text style={styles.chevron}>‹</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Alerts</Text>
+        <View style={styles.headerMid}>
+          <Text style={styles.headerTitle}>Alerts</Text>
+          <Text style={styles.headerSub}>What happened while you were away</Text>
+        </View>
         <View style={styles.headerSpacer} />
       </View>
       {alerts !== undefined && alerts.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Bloub
-            size={120}
+            size={100}
             shape="nuage"
             color={colors.lilac}
             expression="somnolent"
@@ -91,7 +93,7 @@ export default function Alerts() {
           />
           <Text style={styles.emptyTitle}>All quiet in the nest</Text>
           <Text style={styles.emptySub}>
-            Alerts about arrivals, check-ins and SOS land here.
+            Alerts land here — arrivals, check-ins, SOS.
           </Text>
         </View>
       ) : (
@@ -100,7 +102,7 @@ export default function Alerts() {
           showsVerticalScrollIndicator={false}
         >
           {(alerts ?? []).map((alert) => {
-            const icon = ICONS[alert.type];
+            const tag = TAGS[alert.type];
             const name = nameById.get(alert.fromUserId) ?? 'Someone';
             const copy = derive(alert, name);
             return (
@@ -108,8 +110,8 @@ export default function Alerts() {
                 <View style={styles.dotCol}>
                   {!alert.read ? <View style={styles.dot} /> : null}
                 </View>
-                <View style={[styles.iconBox, { backgroundColor: icon.bg }]}>
-                  <Text style={styles.iconEmoji}>{icon.emoji}</Text>
+                <View style={[styles.tagBox, { backgroundColor: tag.bg }]}>
+                  <Text style={styles.tagText}>{tag.label}</Text>
                 </View>
                 <View style={styles.mid}>
                   <Text style={styles.rowTitle}>{copy.title}</Text>
@@ -146,7 +148,9 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   chevron: { fontSize: 22, fontWeight: '800', color: colors.ink, marginTop: -2 },
-  headerTitle: { ...typography.title, flex: 1, textAlign: 'center' },
+  headerMid: { flex: 1, alignItems: 'center', gap: 1 },
+  headerTitle: { ...typography.title, fontSize: 20, lineHeight: 24 },
+  headerSub: { ...typography.small, fontSize: 12, lineHeight: 15 },
   headerSpacer: { width: 36 },
   content: { padding: 16, gap: 10, paddingBottom: 32 },
   rowCard: {
@@ -162,18 +166,37 @@ const styles = StyleSheet.create({
   },
   dotCol: { width: 8, alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.coral },
-  iconBox: {
+  tagBox: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconEmoji: { fontSize: 19 },
+  tagText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 11,
+    color: colors.ink,
+  },
   mid: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: '800', color: colors.ink },
-  rowBody: { fontSize: 13, fontWeight: '600', color: colors.inkSoft },
-  rowTime: { fontSize: 11, fontWeight: '700', color: colors.inkFaint },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
+    fontFamily: 'Nunito_800ExtraBold',
+  },
+  rowBody: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+  rowTime: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.inkFaint,
+    fontFamily: 'Nunito_700Bold',
+  },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',

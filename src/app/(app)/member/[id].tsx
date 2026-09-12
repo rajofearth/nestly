@@ -6,7 +6,7 @@ import { Bloub } from '../../../components/Bloub';
 import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import { api } from '../../../../convex/_generated/api';
 import type { Id } from '../../../../convex/_generated/dataModel';
-import { colors, radius, spacing, typography } from '../../../theme/tokens';
+import { colors, radius, shadow, spacing, typography } from '../../../theme/tokens';
 import { useMe, useMyToken } from '../../../lib/identity';
 import { useCircle } from '../../../lib/useCircle';
 import { MAP_STYLE_URL, speedKmh, timeAgo } from '../../../lib/utils';
@@ -16,6 +16,7 @@ import { Button } from '../../../components/ui/Button';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Sheet } from '../../../components/ui/Sheet';
 import { StatPill } from '../../../components/ui/Bits';
+import { hapticError, useHaptics } from '../../../hooks/useHaptics';
 import type { MemberMood } from '../../../lib/memberStatus';
 
 export default function MemberDetailScreen() {
@@ -25,6 +26,7 @@ export default function MemberDetailScreen() {
   const token = useMyToken();
   const me = useMe();
   const { circle, members, loading } = useCircle();
+  const haptic = useHaptics();
 
   const member = members.find((m) => m._id === id);
   const crumbs = useQuery(
@@ -79,6 +81,7 @@ export default function MemberDetailScreen() {
       await removeMember({ token, memberId: id as Id<'users'> });
       router.back();
     } catch {
+      hapticError();
       setRemoveOpen(true);
     }
   };
@@ -89,10 +92,10 @@ export default function MemberDetailScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.chevron}>
           <Text style={styles.chevronText}>‹</Text>
         </Pressable>
-        <Text numberOfLines={1} style={styles.name}>
-          {member.name}
-        </Text>
-        <View style={styles.roleChip}>
+        <View style={styles.headerMid}>
+          <Text numberOfLines={1} style={styles.name}>
+            {member.name}
+          </Text>
           <Text numberOfLines={1} style={styles.roleText}>
             {roleLabel(member.role, member.roleLabel)}
           </Text>
@@ -101,7 +104,7 @@ export default function MemberDetailScreen() {
 
       <View style={styles.moodBlock}>
         <Bloub
-          size={140}
+          size={120}
           animate
           shape={member.avatar.shape}
           color={member.avatar.color}
@@ -114,21 +117,20 @@ export default function MemberDetailScreen() {
 
       <View style={styles.pills}>
         {battery ? (
-          <StatPill emoji={battery.emoji} text={battery.text} tint={battery.tint} />
+          <StatPill text={battery.text} tint={battery.tint} />
         ) : (
-          <StatPill emoji="🔋" text="No battery data" tint="off" />
+          <StatPill text="No battery data" tint="off" />
         )}
+        <StatPill text={kmh != null ? `${kmh} km/h` : 'Resting'} tint={kmh != null ? 'ok' : 'off'} />
         <StatPill
-          emoji={kmh != null ? '💨' : '🧘'}
-          text={kmh != null ? `${kmh} km/h` : 'Still'}
-          tint={kmh != null ? 'ok' : 'off'}
+          text={timeAgo(member.lastSeen)}
+          tint={mood.tint === 'off' ? 'off' : 'ok'}
         />
-        <StatPill emoji="🕐" text={timeAgo(member.lastSeen)} tint={mood.tint === 'off' ? 'off' : 'ok'} />
       </View>
 
       <View style={styles.miniMap}>
         {points.length >= 2 ? (
-          <TrailMap points={points} mood={mood} />
+          <TrailMap points={points} />
         ) : (
           <View style={styles.noMovement}>
             <Bloub
@@ -146,7 +148,7 @@ export default function MemberDetailScreen() {
       <View style={styles.actions}>
         <View style={styles.action}>
           <Button
-            label={asked ? 'Asked ✓' : waiting ? 'Waiting for reply…' : 'Ask to check in'}
+            label={waiting ? 'Waiting for reply…' : asked ? 'Asked' : 'Ask to check in'}
             variant={asked || waiting ? 'secondary' : 'primary'}
             disabled={asked || waiting}
             onPress={onAsk}
@@ -162,13 +164,22 @@ export default function MemberDetailScreen() {
       </View>
 
       {isOwner && me && id !== me._id ? (
-        <Pressable onPress={() => setRemoveOpen(true)} hitSlop={8} style={styles.removeBtn}>
+        <Pressable
+          onPress={() => {
+            haptic('medium');
+            setRemoveOpen(true);
+          }}
+          hitSlop={8}
+          style={styles.removeBtn}
+        >
           <Text style={styles.removeText}>Remove from nest</Text>
         </Pressable>
       ) : null}
 
       <Sheet visible={removeOpen} onClose={() => setRemoveOpen(false)}>
-        <Text style={styles.sheetTitle}>Remove {member.name} from {circle?.name}?</Text>
+        <Text style={styles.sheetTitle}>
+          Remove {member.name} from {circle?.name}?
+        </Text>
         <View style={styles.sheetRow}>
           <Button label="Cancel" variant="secondary" onPress={() => setRemoveOpen(false)} />
           <Button label="Remove" variant="danger" onPress={onRemove} />
@@ -180,10 +191,8 @@ export default function MemberDetailScreen() {
 
 const TrailMap = React.memo(function TrailMap({
   points,
-  mood,
 }: {
   points: { lat: number; lng: number }[];
-  mood: MemberMood;
 }) {
   const line: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
     type: 'FeatureCollection',
@@ -262,22 +271,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadow.card,
   },
   chevronText: { fontSize: 22, color: colors.ink, marginTop: -3, fontWeight: '800' },
-  name: {
-    ...typography.title,
-    flex: 1,
-  },
-  roleChip: {
-    backgroundColor: colors.creamDeep,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.m,
-    paddingVertical: 6,
-    maxWidth: 110,
-  },
-  roleText: { fontSize: 12, fontWeight: '700', color: colors.inkSoft },
+  headerMid: { flex: 1, gap: 1 },
+  name: { ...typography.title },
+  roleText: { ...typography.small, fontSize: 12, lineHeight: 15, color: colors.inkSoft },
   moodBlock: { alignItems: 'center', gap: spacing.s, paddingVertical: spacing.l },
   moodLabel: { ...typography.bodySoft, textAlign: 'center' },
   pills: {

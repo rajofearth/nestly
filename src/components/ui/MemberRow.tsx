@@ -24,7 +24,6 @@ export function MemberRow({ member, onPress, distanceM }: MemberRowProps) {
     >
       <MemberAvatar
         avatar={member.avatar}
-        role={member.role}
         size={54}
         state={mood.state}
         expression={mood.expression}
@@ -32,9 +31,7 @@ export function MemberRow({ member, onPress, distanceM }: MemberRowProps) {
       <View style={styles.mid}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>{member.name}</Text>
-          {member.isOwner ? (
-            <Text style={styles.owner}>👑</Text>
-          ) : null}
+          {member.isOwner ? <Text style={styles.ownerTag}>Nest keeper</Text> : null}
         </View>
         <Text style={[styles.status, mood.tint === 'warn' && { color: colors.amber }, mood.tint === 'off' && { color: colors.inkFaint }]}>
           {mood.label}
@@ -69,7 +66,13 @@ const styles = StyleSheet.create({
   mid: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { fontSize: 16, fontWeight: '800', color: colors.ink, fontFamily: 'Nunito_800ExtraBold' },
-  owner: { fontSize: 13 },
+  ownerTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.coral,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   status: { fontSize: 13, fontWeight: '600', color: colors.inkSoft },
   right: { alignItems: 'flex-end', gap: 4 },
   role: { fontSize: 12, fontWeight: '700', color: colors.inkFaint },

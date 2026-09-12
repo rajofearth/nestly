@@ -132,6 +132,7 @@ export async function handleLocationUpdate(loc: Location.LocationObject) {
   const sharing = await getSharingEnabled();
   if (!sharing) return;
 
+
   await sendHeartbeat(token, loc);
 
   const places = readJson<CachedPlace[]>(await AsyncStorage.getItem(KEY_PLACES), []);
@@ -200,4 +201,12 @@ export async function stopBackgroundTracking() {
   const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_TASK);
   if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_TASK);
 }
+
+// Foreground telemetry: same pipeline as the background task (heartbeat with
+// 12s throttle, geofence checks) but callable from screens while the app is
+// open. Wire into a watchPositionAsync callback.
+export async function recordLiveLocation(loc: Location.LocationObject) {
+  await handleLocationUpdate(loc);
+}
+
 

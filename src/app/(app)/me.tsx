@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation } from 'convex/react';
+import * as Battery from 'expo-battery';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { api } from '../../../convex/_generated/api';
@@ -25,7 +27,6 @@ import { colors, radius, shadow, typography } from '../../theme/tokens';
 import { useIdentity, useMyToken } from '../../lib/identity';
 import { useMeSync } from '../../lib/useMeSync';
 import { useCircle } from '../../lib/useCircle';
-import { batteryLabel } from '../../lib/memberStatus';
 import { ROLES, roleAvatar, roleLabel, type RoleId } from '../../lib/roles';
 import {
   getSharingEnabled,
@@ -45,6 +46,9 @@ export default function Me() {
   const updateProfile = useMutation(api.auth.updateProfile);
   const regenerateCode = useMutation(api.circles.regenerateCode);
 
+  const batteryLevel = Battery.useBatteryLevel();
+  const batteryState = Battery.useBatteryState();
+
   const [hydrated, setHydrated] = useState(false);
   const [name, setName] = useState('');
   const [role, setRole] = useState<RoleId>('mom');
@@ -52,6 +56,7 @@ export default function Me() {
   const [shape, setShape] = useState('cercle');
   const [color, setColor] = useState('#3b93f0');
   const [expression, setExpression] = useState('neutre');
+  const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
   const [sharing, setSharing] = useState<boolean | null>(null);
@@ -74,13 +79,26 @@ export default function Me() {
     void getSharingEnabled().then(setSharing);
   }, []);
 
+  const batteryPct =
+    batteryLevel !== null && batteryLevel >= 0
+      ? Math.round(batteryLevel * 100)
+      : null;
+  const charging =
+    batteryState === Battery.BatteryState.CHARGING ||
+    batteryState === Battery.BatteryState.FULL;
+
   if (!me) return <View style={styles.flex} />;
 
-  function saveName() {
-    const trimmed = name.trim();
-    if (!token || !trimmed || trimmed === me?.name) return;
-    updateProfile({ token, name: trimmed }).catch(() => {});
-  }
+  const speed = me.speed ?? null;
+  const moving = speed !== null && speed > 0;
+  const deviceLine = [
+    Device.modelName ?? 'Phone',
+    moving ? `On the move · ${Math.round(speed * 3.6)} km/h` : null,
+    batteryPct !== null ? `${batteryPct}%` : null,
+    charging ? 'charging' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   function pickRole(id: RoleId) {
     setRole(id);
@@ -92,21 +110,23 @@ export default function Me() {
     }
   }
 
-  async function saveAvatar() {
-    if (!token || saving) return;
+  async function saveChanges() {
+    const trimmed = name.trim();
+    if (!token || saving || !trimmed) return;
     setSaving(true);
     try {
       await updateProfile({
         token,
-        avatar: { shape, color, expression },
+        name: trimmed,
         role,
         roleLabel: role === 'custom' ? roleLabelText.trim() : '',
+        avatar: { shape, color, expression },
       });
       hapticSuccess();
+      setEditOpen(false);
       setSavedTick(true);
       setTimeout(() => setSavedTick(false), 2000);
     } catch {
-      // keep the draft — user can retry
     } finally {
       setSaving(false);
     }
@@ -119,11 +139,11 @@ export default function Me() {
     else void stopBackgroundTracking();
   }
 
-  async function doSignOut() {
-    setConfirmSignOut(false);
-    await stopBackgroundTracking();
-    await signOut();
-    router.replace('/onboarding');
+  function shareInvite() {
+    if (!circle) return;
+    void Share.share({
+      message: `Join our family on Nestly! Open the app and enter code: ${circle.code}`,
+    });
   }
 
   async function doRegenerate() {
@@ -133,11 +153,15 @@ export default function Me() {
       await regenerateCode({ token });
       hapticSuccess();
     } catch {
-      // ignore — code stays as is
     }
   }
 
-  const battery = batteryLabel(me);
+  async function doSignOut() {
+    setConfirmSignOut(false);
+    await stopBackgroundTracking();
+    await signOut();
+    router.replace('/onboarding');
+  }
 
   return (
     <ScrollView
@@ -145,12 +169,12 @@ export default function Me() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>Me</Text>
+      <Text style={styles.screenTitle}>Me</Text>
 
       <View style={styles.card}>
         <View style={styles.center}>
           <Bloub
-            size={120}
+            size={96}
             state="idle"
             shape={me.avatar.shape}
             color={me.avatar.color}
@@ -159,176 +183,41 @@ export default function Me() {
             animate
           />
         </View>
-        <Text style={styles.profileName}>{name.trim() || me.name}</Text>
+        <Text style={styles.profileName}>{me.name}</Text>
         <View style={styles.roleChip}>
           <Text style={styles.roleChipText}>
-            {roleLabel(role, role === 'custom' ? roleLabelText : undefined)}
+            {roleLabel(me.role, me.roleLabel)}
           </Text>
         </View>
-        <View style={styles.nameRow}>
-          <View style={styles.nameInput}>
-            <Input
-              value={name}
-              onChangeText={setName}
-              placeholder="Your name"
-              maxLength={40}
-            />
-          </View>
-          <Button label="Save" small onPress={saveName} />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Your avatar</Text>
-        <View style={styles.preview}>
-          <Bloub
-            size={110}
-            state="idle"
-            shape={shape}
-            color={color}
-            expression={expression}
-            paper={colors.cream}
-            animate
-          />
-        </View>
-        <Text style={styles.rowLabel}>Shape</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hRow}
-        >
-          {SHAPE_IDS.map((id) => (
-            <Pressable
-              key={id}
-              onPress={() => {
-                haptic();
-                setShape(id);
-              }}
-              style={[styles.shapeBtn, shape === id && styles.selectedRing]}
-            >
-              <Bloub
-                size={34}
-                shape={id}
-                color={color}
-                expression={expression}
-                paper={colors.cream}
-                frozenAt={1.2}
-              />
-            </Pressable>
-          ))}
-        </ScrollView>
-        <Text style={styles.rowLabel}>Color</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hRow}
-        >
-          {COLOR_PALETTE.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => {
-                haptic();
-                setColor(c.hex);
-              }}
-              style={[
-                styles.swatch,
-                { backgroundColor: c.hex },
-                color.toLowerCase() === c.hex.toLowerCase() && styles.selectedRing,
-              ]}
-            />
-          ))}
-        </ScrollView>
-        <Text style={styles.rowLabel}>Expression</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hRow}
-        >
-          {EXPRESSION_IDS.map((e) => (
-            <Pressable
-              key={e.id}
-              onPress={() => {
-                haptic();
-                setExpression(e.id);
-              }}
-              style={[
-                styles.exprChip,
-                expression === e.id && styles.selectedRing,
-              ]}
-            >
-              <Bloub
-                size={30}
-                shape={shape}
-                color={color}
-                expression={e.id}
-                paper={colors.cream}
-                frozenAt={1.2}
-              />
-              <Text style={styles.exprLabel}>{e.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-        <View style={styles.saveRow}>
+        <Text style={styles.deviceLine}>{deviceLine}</Text>
+        <View style={styles.editRow}>
           <Button
-            label={saving ? 'Saving…' : 'Save avatar'}
-            onPress={saveAvatar}
-            disabled={saving}
-            style={styles.saveBtn}
+            label="Edit profile"
+            variant="secondary"
+            small
+            onPress={() => setEditOpen(true)}
           />
-          {savedTick ? <Text style={styles.savedTick}>Saved ✓</Text> : null}
+          {savedTick ? <Text style={styles.savedTick}>Saved</Text> : null}
         </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Role</Text>
-        <View style={styles.roleGrid}>
-          {ROLES.map((r) => (
-            <Pressable
-              key={r.id}
-              onPress={() => {
-                haptic();
-                pickRole(r.id);
-              }}
-              style={[styles.roleOption, role === r.id && styles.selectedRing]}
-            >
-              <Text style={styles.roleEmoji}>{r.emoji}</Text>
-              <Text style={styles.roleOptionLabel}>{r.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {role === 'custom' ? (
-          <Input
-            value={roleLabelText}
-            onChangeText={setRoleLabelText}
-            placeholder="Auntie, uncle, cousin…"
-            label="Role label"
-            maxLength={24}
-          />
-        ) : null}
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>This device</Text>
         <View style={styles.infoRow}>
-          <Text style={styles.infoEmoji}>📱</Text>
           <Text style={styles.infoLabel}>Device</Text>
           <Text style={styles.infoValue}>{Device.modelName ?? 'Phone'}</Text>
         </View>
         <View style={styles.separator} />
         <View style={styles.infoRow}>
-          <Text style={styles.infoEmoji}>🔋</Text>
           <Text style={styles.infoLabel}>Battery</Text>
-          <Text style={styles.infoValue}>{battery ? battery.text : '—'}</Text>
+          <Text style={styles.infoValue}>
+            {batteryPct !== null
+              ? `${batteryPct}%${charging ? ' · charging' : ''}`
+              : '—'}
+          </Text>
         </View>
         <View style={styles.separator} />
         <View style={styles.infoRow}>
-          <Text style={styles.infoEmoji}>🚀</Text>
-          <Text style={styles.infoLabel}>Speed</Text>
-          <Text style={styles.infoValue}>—</Text>
-        </View>
-        <View style={styles.separator} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoEmoji}>📍</Text>
           <Text style={styles.infoLabel}>Location sharing</Text>
           <Switch
             value={sharing ?? false}
@@ -340,30 +229,194 @@ export default function Me() {
         </View>
       </View>
 
+      {circle ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Nest</Text>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Circle</Text>
+            <Text style={styles.infoValue}>{circle.name}</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Invite code</Text>
+            <Text style={styles.codeValue}>{circle.code}</Text>
+          </View>
+          <Button
+            label="Share invite"
+            variant="secondary"
+            small
+            onPress={shareInvite}
+            style={styles.shareBtn}
+          />
+          {me.isOwner ? (
+            <Pressable
+              style={styles.ghostRow}
+              onPress={() => {
+                haptic();
+                setConfirmCode(true);
+              }}
+            >
+              <Text style={styles.ghostRowText}>New code</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Account</Text>
-        {me.isOwner && circle ? (
-          <>
-            <Pressable
-              style={styles.infoRow}
-              onPress={() => setConfirmCode(true)}
-            >
-              <Text style={styles.infoEmoji}>🔑</Text>
-              <Text style={styles.infoLabel}>Invite code</Text>
-              <Text style={styles.codeValue}>{circle.code}</Text>
-              <Text style={styles.linkText}>Regenerate</Text>
-            </Pressable>
-            <View style={styles.separator} />
-          </>
-        ) : null}
-        <Pressable style={styles.infoRow} onPress={() => setConfirmSignOut(true)}>
-          <Text style={styles.infoEmoji}>🚪</Text>
-          <Text style={[styles.infoLabel, { color: colors.danger }]}>Sign out</Text>
+        <Pressable
+          style={styles.infoRow}
+          onPress={() => setConfirmSignOut(true)}
+        >
+          <Text style={[styles.infoLabel, { color: colors.danger }]}>
+            Sign out
+          </Text>
         </Pressable>
       </View>
 
-      <Text style={styles.footer}>Nestly keeps your family close. Made with care.</Text>
-      <Text style={styles.version}>v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
+      <Text style={styles.footer}>
+        Nestly · v{Constants.expoConfig?.version ?? '1.0.0'}
+      </Text>
+
+      <Sheet
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit profile"
+      >
+        <ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Input
+            value={name}
+            onChangeText={setName}
+            placeholder="Your name"
+            label="Name"
+            maxLength={40}
+          />
+          <Text style={styles.sheetLabel}>Role</Text>
+          <View style={styles.roleGrid}>
+            {ROLES.map((r) => (
+              <Pressable
+                key={r.id}
+                onPress={() => {
+                  haptic();
+                  pickRole(r.id);
+                }}
+                style={[styles.roleOption, role === r.id && styles.selectedRing]}
+              >
+                <Text style={styles.roleOptionLabel}>{r.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {role === 'custom' ? (
+            <Input
+              value={roleLabelText}
+              onChangeText={setRoleLabelText}
+              placeholder="Auntie, uncle, cousin…"
+              label="Role label"
+              maxLength={24}
+            />
+          ) : null}
+          <Text style={styles.sheetLabel}>Avatar</Text>
+          <View style={styles.preview}>
+            <Bloub
+              size={110}
+              state="idle"
+              shape={shape}
+              color={color}
+              expression={expression}
+              paper={colors.cream}
+              animate
+            />
+          </View>
+          <Text style={styles.rowLabel}>Shape</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hRow}
+          >
+            {SHAPE_IDS.map((id) => (
+              <Pressable
+                key={id}
+                onPress={() => {
+                  haptic();
+                  setShape(id);
+                }}
+                style={[styles.shapeBtn, shape === id && styles.selectedRing]}
+              >
+                <Bloub
+                  size={34}
+                  shape={id}
+                  color={color}
+                  expression={expression}
+                  paper={colors.cream}
+                  frozenAt={1.2}
+                />
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Text style={styles.rowLabel}>Color</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hRow}
+          >
+            {COLOR_PALETTE.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => {
+                  haptic();
+                  setColor(c.hex);
+                }}
+                style={[
+                  styles.swatch,
+                  { backgroundColor: c.hex },
+                  color.toLowerCase() === c.hex.toLowerCase() &&
+                    styles.selectedRing,
+                ]}
+              />
+            ))}
+          </ScrollView>
+          <Text style={styles.rowLabel}>Expression</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hRow}
+          >
+            {EXPRESSION_IDS.map((e) => (
+              <Pressable
+                key={e.id}
+                onPress={() => {
+                  haptic();
+                  setExpression(e.id);
+                }}
+                style={[
+                  styles.exprChip,
+                  expression === e.id && styles.selectedRing,
+                ]}
+              >
+                <Bloub
+                  size={30}
+                  shape={shape}
+                  color={color}
+                  expression={e.id}
+                  paper={colors.cream}
+                  frozenAt={1.2}
+                />
+                <Text style={styles.exprLabel}>{e.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Button
+            label={saving ? 'Saving…' : 'Save changes'}
+            onPress={saveChanges}
+            disabled={saving}
+            style={styles.saveBtn}
+          />
+        </ScrollView>
+      </Sheet>
 
       <Sheet
         visible={confirmSignOut}
@@ -390,13 +443,13 @@ export default function Me() {
       <Sheet
         visible={confirmCode}
         onClose={() => setConfirmCode(false)}
-        title="Regenerate invite code?"
+        title="New invite code?"
       >
         <Text style={styles.sheetBody}>
           The old code stops working. Share the new one with family.
         </Text>
         <Button
-          label="Regenerate"
+          label="New code"
           onPress={doRegenerate}
           style={{ marginTop: 12 }}
         />
@@ -414,7 +467,12 @@ export default function Me() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.cream },
   content: { padding: 16, paddingBottom: 48, gap: 16 },
-  title: { ...typography.title, paddingTop: 48 },
+  screenTitle: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 17,
+    color: colors.ink,
+    paddingTop: 48,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.l,
@@ -434,9 +492,45 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   roleChipText: { fontSize: 12, fontWeight: '700', color: colors.inkSoft },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nameInput: { flex: 1 },
+  deviceLine: {
+    ...typography.small,
+    textAlign: 'center',
+    color: colors.inkFaint,
+  },
+  editRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  savedTick: { fontSize: 14, fontWeight: '800', color: colors.mint },
   cardTitle: { ...typography.heading },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  infoLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.ink },
+  infoValue: { fontSize: 14, fontWeight: '600', color: colors.inkSoft },
+  codeValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.ink,
+    letterSpacing: 2,
+  },
+  separator: { height: 1, backgroundColor: colors.border },
+  shareBtn: { alignSelf: 'stretch' },
+  ghostRow: { alignItems: 'center', paddingVertical: 4 },
+  ghostRowText: { fontSize: 14, fontWeight: '800', color: colors.coral },
+  sheetScroll: { maxHeight: 480 },
+  sheetContent: { gap: 14, paddingBottom: 8 },
+  sheetLabel: { ...typography.tiny, color: colors.inkFaint },
+  sheetBody: {
+    ...typography.bodySoft,
+    marginBottom: 4,
+  },
   preview: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -446,7 +540,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  rowLabel: { ...typography.tiny, color: colors.inkFaint, marginTop: 4 },
+  rowLabel: { ...typography.tiny, color: colors.inkFaint, marginTop: -6 },
   hRow: { gap: 10, paddingVertical: 4 },
   shapeBtn: {
     width: 48,
@@ -478,61 +572,24 @@ const styles = StyleSheet.create({
   },
   exprLabel: { fontSize: 12, fontWeight: '700', color: colors.ink },
   selectedRing: { borderColor: colors.coral },
-  saveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
-  saveBtn: { flex: 1, alignSelf: 'stretch' },
-  savedTick: { fontSize: 14, fontWeight: '800', color: colors.mint },
   roleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   roleOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     borderRadius: radius.pill,
     borderWidth: 2,
     borderColor: 'transparent',
     backgroundColor: colors.cream,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  roleEmoji: { fontSize: 15 },
   roleOptionLabel: { fontSize: 13, fontWeight: '700', color: colors.ink },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
-  },
-  infoEmoji: { fontSize: 16, width: 22, textAlign: 'center' },
-  infoLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.ink },
-  infoValue: { fontSize: 14, fontWeight: '600', color: colors.inkSoft },
-  codeValue: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.ink,
-    letterSpacing: 2,
-  },
-  linkText: { fontSize: 13, fontWeight: '800', color: colors.coral },
-  separator: { height: 1, backgroundColor: colors.border },
+  saveBtn: { marginTop: 4 },
   footer: {
     ...typography.tiny,
     textAlign: 'center',
     marginTop: 8,
-  },
-  version: {
-    ...typography.tiny,
-    textAlign: 'center',
-    color: colors.inkFaint,
-  },
-  sheetBody: {
-    ...typography.bodySoft,
-    marginBottom: 4,
   },
 });

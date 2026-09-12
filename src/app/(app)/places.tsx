@@ -13,6 +13,7 @@ import * as Location from 'expo-location';
 import { Camera, Map as MapLibreMap, type MapRef } from '@maplibre/maplibre-react-native';
 import { api } from '../../../convex/_generated/api';
 import type { Doc } from '../../../convex/_generated/dataModel';
+import { Bloub } from '../../components/Bloub';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Input } from '../../components/ui/Input';
@@ -20,14 +21,26 @@ import { SectionHeader } from '../../components/ui/Bits';
 import { Sheet } from '../../components/ui/Sheet';
 import { colors, radius, shadow, spacing } from '../../theme/tokens';
 import { useMyToken } from '../../lib/identity';
-import { MAP_STYLE_URL, PLACE_EMOJIS, timeAgo } from '../../lib/utils';
+import { MAP_STYLE_URL, timeAgo } from '../../lib/utils';
 import { hapticSuccess, useHaptics } from '../../hooks/useHaptics';
 
 type Place = Doc<'places'>;
-type PlaceEvent = Doc<'placeEvents'> & { memberName: string };
 type Step = 'details' | 'map' | 'confirm';
 
 const RADIUS_OPTIONS = [100, 150, 300, 500];
+
+const PLACE_COLORS = [
+  '#FF6B4A',
+  '#3E8EDE',
+  '#2FA37C',
+  '#9B7EDE',
+  '#F0A93B',
+  '#E152B0',
+];
+
+function placeColor(index: number): string {
+  return PLACE_COLORS[index % PLACE_COLORS.length];
+}
 
 export default function PlacesScreen() {
   const token = useMyToken();
@@ -72,25 +85,48 @@ export default function PlacesScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Places</Text>
-        <Text style={styles.subtitle}>Get a nudge when family reaches a spot</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerMid}>
+            <Text style={styles.title}>Places</Text>
+            <Text style={styles.purpose}>Gentle nudges when family reaches a spot</Text>
+          </View>
+          <Pressable
+            onPress={() => {
+              haptic('medium');
+              setAddOpen(true);
+            }}
+            style={({ pressed }) => [styles.addPill, pressed && { opacity: 0.9 }]}
+          >
+            <Text style={styles.addPillText}>Add a place</Text>
+          </Pressable>
+        </View>
 
         <SectionHeader title="Your spots" />
 
         {places && places.length === 0 ? (
           <EmptyState
-            bloub={{ state: 'alert', color: colors.mint }}
+            bloub={{
+              state: 'sleep',
+              expression: 'somnolent',
+              color: colors.lilac,
+              size: 90,
+            }}
             title="No places yet"
-            subtitle="Add Home or School to get gentle nudges when family arrives or leaves"
-            actionLabel="Add a place"
-            onAction={() => setAddOpen(true)}
+            subtitle="Add Home first — it powers arrival nudges for everyone"
           />
         ) : (
           <View style={styles.placeList}>
-            {(places ?? []).map((place) => (
+            {(places ?? []).map((place, index) => (
               <View key={place._id} style={styles.rowWrap}>
                 <View style={styles.placeCard}>
-                  <Text style={styles.placeEmoji}>{place.emoji}</Text>
+                  <Bloub
+                    size={40}
+                    shape="goutte"
+                    color={placeColor(index)}
+                    expression="attentif"
+                    paper={colors.cream}
+                    frozenAt={1.2}
+                  />
                   <View style={styles.placeMid}>
                     <Text style={styles.placeName}>{place.name}</Text>
                     <Text style={styles.placeRadius}>within {place.radiusM} m</Text>
@@ -98,12 +134,12 @@ export default function PlacesScreen() {
                   <View style={styles.chipRow}>
                     {place.notifyOnArrive ? (
                       <View style={[styles.chip, { backgroundColor: colors.mintSoft }]}>
-                        <Text style={styles.chipText}>✓ arrive</Text>
+                        <Text style={styles.chipText}>Arrivals on</Text>
                       </View>
                     ) : null}
                     {place.notifyOnLeave ? (
                       <View style={[styles.chip, { backgroundColor: colors.lilacSoft }]}>
-                        <Text style={styles.chipText}>✓ leave</Text>
+                        <Text style={styles.chipText}>Departures on</Text>
                       </View>
                     ) : null}
                   </View>
@@ -128,7 +164,6 @@ export default function PlacesScreen() {
               const place = placesById.get(ev.placeId);
               return (
                 <View key={ev._id} style={styles.eventRow}>
-                  <Text style={styles.eventEmoji}>{place?.emoji ?? '📍'}</Text>
                   <Text style={styles.eventText}>
                     {ev.memberName}{' '}
                     {ev.type === 'arrive' ? 'arrived at' : 'left'} {place?.name ?? 'a place'}
@@ -139,26 +174,11 @@ export default function PlacesScreen() {
             })}
           </View>
         ) : (
-          <Text style={styles.emptyEvents}>No visits logged yet</Text>
+          <Text style={styles.emptyEvents}>No visits yet</Text>
         )}
       </ScrollView>
 
-      <View style={styles.fabWrap} pointerEvents="box-none">
-        <Pressable
-          onPress={() => {
-            haptic('medium');
-            setAddOpen(true);
-          }}
-          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9 }]}
-        >
-          <Text style={styles.fabText}>📍 Add a place</Text>
-        </Pressable>
-      </View>
-
-      <AddPlaceSheet
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-      />
+      <AddPlaceSheet visible={addOpen} onClose={() => setAddOpen(false)} />
 
       <Sheet
         visible={!!removeTarget}
@@ -180,7 +200,6 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
 
   const [step, setStep] = useState<Step>('details');
   const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState(PLACE_EMOJIS[0]);
   const [radiusM, setRadiusM] = useState(150);
   const [notifyOnArrive, setNotifyOnArrive] = useState(true);
   const [notifyOnLeave, setNotifyOnLeave] = useState(false);
@@ -232,7 +251,7 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
       await addFn({
         token,
         name: name.trim() || 'New place',
-        emoji,
+        emoji: '',
         lat: picked.lat,
         lng: picked.lng,
         radiusM,
@@ -242,7 +261,6 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
       hapticSuccess();
       onClose();
       setName('');
-      setEmoji(PLACE_EMOJIS[0]);
       setRadiusM(150);
       setNotifyOnArrive(true);
       setNotifyOnLeave(false);
@@ -273,18 +291,6 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                 placeholder="e.g. Home, School, Grandma"
                 autoFocus
               />
-              <Text style={styles.fieldLabel}>Pick a marker</Text>
-              <View style={styles.emojiRow}>
-                {PLACE_EMOJIS.map((e) => (
-                  <Pressable
-                    key={e}
-                    onPress={() => setEmoji(e)}
-                    style={[styles.emojiChip, emoji === e && styles.emojiChipSelected]}
-                  >
-                    <Text style={styles.emojiText}>{e}</Text>
-                  </Pressable>
-                ))}
-              </View>
               <Text style={styles.fieldLabel}>How close counts?</Text>
               <View style={styles.radiusRow}>
                 {RADIUS_OPTIONS.map((r) => (
@@ -299,7 +305,7 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                   </Pressable>
                 ))}
               </View>
-              <Button label="Pick the spot on the map" icon="🗺️" onPress={openMap} />
+              <Button label="Pick the spot on the map" onPress={openMap} />
             </ScrollView>
           ) : null}
 
@@ -328,7 +334,7 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
                   <View style={styles.crosshairBarV} />
                 </View>
               </View>
-              <Button label="Pin it here 📍" onPress={pinHere} disabled={!myLoc} />
+              <Button label="Pin it here" onPress={pinHere} disabled={!myLoc} />
               <Button
                 label="Back"
                 variant="ghost"
@@ -345,7 +351,6 @@ function AddPlaceSheet({ visible, onClose }: { visible: boolean; onClose: () => 
             >
               <Text style={styles.sheetTitle}>Looks good?</Text>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryEmoji}>{emoji}</Text>
                 <View style={styles.summaryMid}>
                   <Text style={styles.summaryName}>{name.trim() || 'New place'}</Text>
                   <Text style={styles.summaryMeta}>
@@ -391,22 +396,42 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     paddingTop: spacing.xxl,
-    paddingBottom: 140,
+    paddingBottom: spacing.xxxl,
     paddingHorizontal: spacing.xl,
     gap: spacing.l,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.m,
+  },
+  headerMid: { flex: 1 },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: colors.ink,
     fontFamily: 'Nunito_800ExtraBold',
   },
-  subtitle: {
+  purpose: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.inkSoft,
-    marginTop: -spacing.s,
+    marginTop: 2,
     fontFamily: 'Nunito_600SemiBold',
+  },
+  addPill: {
+    backgroundColor: colors.coral,
+    borderRadius: radius.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 4,
+    ...shadow.float,
+  },
+  addPillText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.white,
+    fontFamily: 'Nunito_800ExtraBold',
   },
   placeList: { gap: spacing.m },
   rowWrap: { borderRadius: radius.l },
@@ -421,7 +446,6 @@ const styles = StyleSheet.create({
     padding: spacing.l,
     ...shadow.card,
   },
-  placeEmoji: { fontSize: 30 },
   placeMid: { flex: 1, gap: 2 },
   placeName: {
     fontSize: 16,
@@ -447,7 +471,6 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   eventRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.m },
-  eventEmoji: { fontSize: 18 },
   eventText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.ink },
   eventTime: { fontSize: 12, fontWeight: '700', color: colors.inkFaint },
   emptyEvents: {
@@ -455,26 +478,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.inkFaint,
     fontFamily: 'Nunito_600SemiBold',
-  },
-  fabWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 104,
-    alignItems: 'center',
-  },
-  fab: {
-    backgroundColor: colors.coral,
-    borderRadius: radius.pill,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    ...shadow.float,
-  },
-  fabText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.white,
-    fontFamily: 'Nunito_800ExtraBold',
   },
   sheetBackdrop: {
     flex: 1,
@@ -522,22 +525,6 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     marginLeft: 4,
   },
-  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s },
-  emojiChip: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.m,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiChipSelected: {
-    borderColor: colors.coral,
-    backgroundColor: colors.coralSoft,
-  },
-  emojiText: { fontSize: 19 },
   radiusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s },
   radiusChip: {
     borderRadius: radius.pill,
@@ -598,7 +585,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.l,
   },
-  summaryEmoji: { fontSize: 30 },
   summaryMid: { flex: 1, gap: 2 },
   summaryName: {
     fontSize: 16,

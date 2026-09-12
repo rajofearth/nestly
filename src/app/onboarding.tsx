@@ -242,8 +242,8 @@ function Welcome({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => voi
       </Text>
 
       <View style={styles.ctaStack}>
-        <Button label="Create a family nest" icon="🏡" onPress={onCreate} />
-        <Button label="Join with an invite code" variant="secondary" icon="🔗" onPress={onJoin} />
+        <Button label="Create a family nest" onPress={onCreate} />
+        <Button label="Join with an invite code" variant="secondary" onPress={onJoin} />
       </View>
     </View>
   );
@@ -321,3 +321,4 @@ const styles = StyleSheet.create({
   },
   backRow: { marginTop: spacing.s },
 });
+

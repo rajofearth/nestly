@@ -171,7 +171,7 @@ export default function Chat() {
             paper={colors.cream}
             animate
           />
-          <Text style={styles.emptyTitle}>Say hi to the nest 👋</Text>
+          <Text style={styles.emptyTitle}>Say hi to the nest</Text>
           <Text style={styles.emptySub}>
             Quick updates, funny moments, and check-ins live here.
           </Text>
@@ -336,3 +336,4 @@ const styles = StyleSheet.create({
   },
   sendIcon: { color: colors.white, fontSize: 18, fontWeight: '800' },
 });
+

@@ -12,11 +12,9 @@ export function SectionHeader({ title, action }: { title: string; action?: strin
 }
 
 export function StatPill({
-  emoji,
   text,
   tint = 'ok',
 }: {
-  emoji: string;
   text: string;
   tint?: 'ok' | 'warn' | 'off';
 }) {
@@ -28,7 +26,13 @@ export function StatPill({
         tint === 'off' && { backgroundColor: colors.border },
       ]}
     >
-      <Text style={{ fontSize: 12 }}>{emoji}</Text>
+      <View
+        style={[
+          styles.dot,
+          tint === 'warn' && { backgroundColor: colors.amber },
+          tint === 'off' && { backgroundColor: colors.inkFaint },
+        ]}
+      />
       <Text style={styles.pillText}>{text}</Text>
     </View>
   );
@@ -46,11 +50,12 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     backgroundColor: colors.mintSoft,
     borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.mint },
   pillText: { fontSize: 12, fontWeight: '700', color: colors.ink },
 });

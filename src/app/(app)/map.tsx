@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
@@ -10,15 +10,34 @@ import { colors, radius, shadow, spacing, typography } from '../../theme/tokens'
 import { useMe, useMyToken } from '../../lib/identity';
 import { useMeSync } from '../../lib/useMeSync';
 import { useCircle } from '../../lib/useCircle';
-import { MAP_STYLE_URL, timeAgo } from '../../lib/utils';
+import { MAP_STYLE_URL, speedKmh } from '../../lib/utils';
 import { memberMood } from '../../lib/memberStatus';
 import { MemberAvatar } from '../../components/ui/MemberAvatar';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { Sheet } from '../../components/ui/Sheet';
 import { Button } from '../../components/ui/Button';
 import { hapticError, hapticSuccess, useHaptics } from '../../hooks/useHaptics';
+import { recordLiveLocation } from '../../services/tracking';
 import type { CameraRef } from '@maplibre/maplibre-react-native';
 import type { NestlyUser } from '../../lib/identity';
+
+type Mood = ReturnType<typeof memberMood>;
+
+function statusWord(mood: Mood, member: NestlyUser): string {
+  switch (mood.state) {
+    case 'comet': {
+      const kmh = speedKmh(member.speed);
+      return kmh != null ? `Moving · ${kmh} km/h` : 'Moving';
+    }
+    case 'sleep':
+      return 'Offline';
+    case 'alert':
+      return 'Low battery';
+    case 'notify':
+      return 'Charging';
+    default:
+      return 'Resting';
+  }
+}
 
 export default function NestScreen() {
   const router = useRouter();
@@ -71,6 +90,7 @@ export default function NestScreen() {
       sub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High },
         (pos) => {
+          void recordLiveLocation(pos);
           if (pos.coords.latitude != null && pos.coords.longitude != null) {
             setMyLoc([pos.coords.longitude, pos.coords.latitude]);
           }
@@ -95,13 +115,13 @@ export default function NestScreen() {
   }, [myLoc]);
 
   const markers = useMemo(() => {
-    const list: { id: string; lngLat: [number, number]; member: NestlyUser; isMe: boolean }[] = [];
+    const list: { id: string; lngLat: [number, number]; member: NestlyUser }[] = [];
     for (const m of members) {
       const isMe = m._id === user?._id;
       const pos: [number, number] | null =
         isMe && myLoc ? myLoc : m.lat != null && m.lng != null ? [m.lng, m.lat] : null;
       if (!pos) continue;
-      list.push({ id: m._id, lngLat: pos, member: m, isMe });
+      list.push({ id: m._id, lngLat: pos, member: m });
     }
     return list;
   }, [members, user, myLoc]);
@@ -118,10 +138,20 @@ export default function NestScreen() {
     }
   };
 
+  const onShareInvite = () => {
+    if (!circle?.code) return;
+    haptic();
+    Share.share({
+      message: `Join our family on Nestly! Open the app and enter code: ${circle.code}`,
+    }).catch(() => {});
+  };
+
   const requestPermission = async () => {
     const { granted } = await Location.requestForegroundPermissionsAsync();
     setPerm(granted ? 'granted' : 'denied');
   };
+
+  const showGuidance = others.length === 0 && !loading;
 
   return (
     <View style={styles.page}>
@@ -146,57 +176,33 @@ export default function NestScreen() {
         pointerEvents="box-none"
         style={[styles.top, { top: insets.top + spacing.s }]}
       >
-        <View style={[styles.circlePill, shadow.float]}>
+        <View style={[styles.topCard, shadow.float]}>
           <Text numberOfLines={1} style={styles.circleName}>
             {circle?.name ?? 'Nest'}
           </Text>
           <Pressable
             onPress={() => router.push('/alerts')}
             hitSlop={8}
-            style={({ pressed }) => [styles.bell, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.alertChip, pressed && { opacity: 0.7 }]}
           >
-            <Text style={{ fontSize: 18 }}>🔔</Text>
-            {unread > 0 ? <View style={styles.dot} /> : null}
+            {unread > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.alertChipText}>Alerts</Text>
           </Pressable>
         </View>
       </View>
 
-      {sentAt ? (
-        <View style={[styles.sentCard, { bottom: 108 + spacing.xl }, shadow.float]}>
-          <Text style={styles.sentText}>Sent — family notified</Text>
-        </View>
-      ) : null}
-
       {perm === 'denied' ? (
-        <View style={[styles.permCard, { top: insets.top + spacing.xxl + 40 }, shadow.float]}>
+        <View
+          style={[styles.permCard, { top: insets.top + spacing.xxl + 48 }, shadow.float]}
+        >
           <Text style={styles.permTitle}>Nestly needs your location to work</Text>
           <Button label="Allow location" small onPress={requestPermission} />
         </View>
       ) : null}
-
-      {others.length === 0 && !loading ? (
-        <View style={[styles.emptyWrap, { bottom: 108 + spacing.xxl }]} pointerEvents="box-none">
-          <View style={[styles.emptyCard, shadow.float]}>
-            <EmptyState
-              bloub={{ state: 'exclaim', expression: 'curieux', size: 96, color: colors.coral }}
-              title="Your nest is just you (for now)"
-              subtitle="Invite family from the Family tab"
-            />
-          </View>
-        </View>
-      ) : null}
-
-      <Pressable
-        delayLongPress={1500}
-        onLongPress={() => {
-          hapticError();
-          setSosOpen(true);
-        }}
-        onPressIn={() => haptic()}
-        style={({ pressed }) => [styles.sos, pressed && { transform: [{ scale: 0.94 }] }]}
-      >
-        <Text style={styles.sosText}>SOS</Text>
-      </Pressable>
 
       {members.length > 0 ? (
         <ScrollView
@@ -225,8 +231,8 @@ export default function NestScreen() {
                   <Text numberOfLines={1} style={styles.chipName}>
                     {m.name}
                   </Text>
-                  <Text numberOfLines={1} style={styles.chipMood}>
-                    {mood.label}
+                  <Text numberOfLines={1} style={styles.chipStatus}>
+                    {statusWord(mood, m)}
                   </Text>
                 </View>
               </Pressable>
@@ -235,9 +241,51 @@ export default function NestScreen() {
         </ScrollView>
       ) : null}
 
+      {showGuidance ? (
+        <View
+          pointerEvents="box-none"
+          style={[styles.guidanceWrap, { bottom: spacing.m + 64 + spacing.s }]}
+        >
+          <View style={[styles.guidanceCard, shadow.float]}>
+            <MemberAvatar
+              avatar={{
+                shape: 'nuage',
+                color: colors.coral,
+                expression: 'curieux',
+              }}
+              size={56}
+              ring={false}
+              state="idle"
+              expression="curieux"
+            />
+            <View style={styles.guidanceText}>
+              <Text style={styles.guidanceTitle}>Your nest is just you</Text>
+              <Text style={styles.guidanceSub}>Share your invite code so family can join</Text>
+            </View>
+            <Button label="Share invite" small onPress={onShareInvite} />
+          </View>
+        </View>
+      ) : null}
+
+      <Pressable
+        delayLongPress={1500}
+        onLongPress={() => {
+          hapticError();
+          setSosOpen(true);
+        }}
+        onPressIn={() => haptic()}
+        style={({ pressed }) => [
+          styles.sos,
+          sentAt != null && { backgroundColor: colors.mint },
+          pressed && { transform: [{ scale: 0.94 }] },
+        ]}
+      >
+        <Text style={styles.sosText}>{sentAt != null ? 'Sent' : 'SOS'}</Text>
+      </Pressable>
+
       <Sheet visible={sosOpen} onClose={() => setSosOpen(false)}>
-        <Text style={styles.sosTitle}>Send SOS to everyone in {circle?.name}?</Text>
-        <View style={styles.sosRow}>
+        <Text style={styles.sheetTitle}>Send SOS to everyone in {circle?.name}?</Text>
+        <View style={styles.sheetRow}>
           <Button label="Cancel" variant="secondary" onPress={() => setSosOpen(false)} />
           <Button label="Send" variant="danger" onPress={onSos} />
         </View>
@@ -256,7 +304,7 @@ const MarkerItem = React.memo(function MarkerItem({
   id: string;
   lngLat: [number, number];
   member: NestlyUser;
-  mood: ReturnType<typeof memberMood>;
+  mood: Mood;
   onPress: () => void;
 }) {
   return (
@@ -268,11 +316,12 @@ const MarkerItem = React.memo(function MarkerItem({
           size={40}
           state={mood.state}
           expression={mood.expression}
-          badge={member.isOwner ? '👑' : undefined}
         />
-        <Text style={styles.markerSeen} numberOfLines={1}>
-          {timeAgo(member.lastSeen)}
-        </Text>
+        <View style={styles.markerLabel}>
+          <Text numberOfLines={1} style={styles.markerName}>
+            {member.name}
+          </Text>
+        </View>
       </View>
     </Marker>
   );
@@ -280,13 +329,13 @@ const MarkerItem = React.memo(function MarkerItem({
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.cream },
-  top: { position: 'absolute', left: spacing.l, right: spacing.l, alignItems: 'flex-start' },
-  circlePill: {
+  top: { position: 'absolute', left: spacing.l, right: spacing.l },
+  topCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.s,
+    justifyContent: 'space-between',
     backgroundColor: colors.surface,
-    borderRadius: radius.pill,
+    borderRadius: radius.l,
     borderWidth: 1,
     borderColor: colors.border,
     paddingLeft: spacing.l,
@@ -295,24 +344,37 @@ const styles = StyleSheet.create({
   },
   circleName: {
     ...typography.heading,
-    maxWidth: 200,
+    flexShrink: 1,
   },
-  bell: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  alertChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: colors.creamDeep,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingLeft: spacing.m,
+    paddingRight: spacing.s,
+    paddingVertical: 6,
+  },
+  badge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.coral,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.coral,
+  badgeText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 10,
+    color: colors.white,
+  },
+  alertChipText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 13,
+    color: colors.ink,
   },
   permCard: {
     position: 'absolute',
@@ -324,12 +386,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.l,
     gap: spacing.s,
+    alignItems: 'center',
   },
   permTitle: { ...typography.body, textAlign: 'center' },
   sos: {
     position: 'absolute',
     right: spacing.l,
-    bottom: 96,
+    bottom: spacing.m + 64 + spacing.s,
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -344,23 +407,30 @@ const styles = StyleSheet.create({
     color: colors.white,
     letterSpacing: 1,
   },
-  sentCard: {
+  guidanceWrap: {
     position: 'absolute',
-    right: spacing.l,
-    backgroundColor: colors.mint,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.l,
-    paddingVertical: spacing.s,
+    left: 0,
+    right: 0,
   },
-  sentText: { fontFamily: 'Nunito_800ExtraBold', fontSize: 13, color: colors.white },
-  emptyWrap: { position: 'absolute', left: 0, right: 0 },
-  emptyCard: {
+  guidanceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.m,
     backgroundColor: colors.surface,
     borderRadius: radius.l,
     borderWidth: 1,
     borderColor: colors.border,
-    marginHorizontal: spacing.xl,
+    marginLeft: spacing.l,
+    marginRight: spacing.l + 64 + spacing.s,
+    padding: spacing.m,
   },
+  guidanceText: { flex: 1, gap: 2 },
+  guidanceTitle: {
+    ...typography.heading,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  guidanceSub: { ...typography.small, fontSize: 12, lineHeight: 16 },
   chipRow: { position: 'absolute', left: 0, right: 0 },
   chips: { gap: spacing.s, paddingHorizontal: spacing.l },
   chip: {
@@ -376,19 +446,37 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   chipText: { width: 96, gap: 1 },
-  chipName: { fontSize: 13, fontWeight: '800', color: colors.ink, fontFamily: 'Nunito_800ExtraBold' },
-  chipMood: { fontSize: 11, fontWeight: '600', color: colors.inkSoft },
-  markerSeen: {
-    marginTop: 2,
-    fontSize: 10,
-    fontWeight: '700',
+  chipName: {
+    fontSize: 13,
+    fontWeight: '800',
     color: colors.ink,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 8,
-    overflow: 'hidden',
-    textAlign: 'center',
+    fontFamily: 'Nunito_800ExtraBold',
+  },
+  chipStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    fontFamily: 'Nunito_600SemiBold',
   },
   markerView: { alignItems: 'center' },
-  sosTitle: { ...typography.body, marginBottom: spacing.l },
-  sosRow: { flexDirection: 'row', gap: spacing.s },
+  markerLabel: {
+    marginTop: 2,
+    maxWidth: 110,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  markerName: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.ink,
+    fontFamily: 'Nunito_800ExtraBold',
+    textAlign: 'center',
+  },
+  sheetTitle: { ...typography.body, marginBottom: spacing.l },
+  sheetRow: { flexDirection: 'row', gap: spacing.s },
 });

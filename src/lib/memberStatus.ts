@@ -63,12 +63,11 @@ export function memberMood(user: NestlyUser): MemberMood {
 
 export function batteryLabel(user: NestlyUser): {
   text: string;
-  emoji: string;
   tint: MemberMood['tint'];
 } | null {
   if (user.battery == null) return null;
   const pct = Math.round(user.battery);
-  if (user.isCharging) return { text: `${pct}% charging`, emoji: '⚡', tint: 'ok' };
-  if (pct <= 15) return { text: `${pct}% battery`, emoji: '🪫', tint: 'warn' };
-  return { text: `${pct}% battery`, emoji: '🔋', tint: 'ok' };
+  if (user.isCharging) return { text: `${pct}% · charging`, tint: 'ok' };
+  if (pct <= 15) return { text: `${pct}% · low`, tint: 'warn' };
+  return { text: `${pct}%`, tint: 'ok' };
 }

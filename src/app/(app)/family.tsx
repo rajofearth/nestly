@@ -14,16 +14,12 @@ import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Bloub } from '../../components/Bloub';
 import { Button } from '../../components/ui/Button';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { MemberRow } from '../../components/ui/MemberRow';
-import { MemberAvatar } from '../../components/ui/MemberAvatar';
 import { SectionHeader } from '../../components/ui/Bits';
 import { Sheet } from '../../components/ui/Sheet';
 import { colors, radius, shadow, spacing } from '../../theme/tokens';
 import { useMe, useMyToken, type NestlyUser } from '../../lib/identity';
 import { useCircle } from '../../lib/useCircle';
-import { memberMood } from '../../lib/memberStatus';
-import { timeAgo } from '../../lib/utils';
 import {
   getSharingEnabled,
   setSharingEnabled,
@@ -34,7 +30,7 @@ import { hapticSuccess, useHaptics } from '../../hooks/useHaptics';
 
 function shareInvite(code: string) {
   Share.share({
-    message: `Join our family on Nestly! 🏡 Open the app and enter code: ${code}`,
+    message: `Join our family on Nestly! Open the app and enter code: ${code}`,
   }).catch(() => {
     Alert.alert('Invite code', code);
   });
@@ -74,11 +70,9 @@ export default function FamilyScreen() {
     return [...members].sort((a, b) => {
       if (me && a._id === me._id) return -1;
       if (me && b._id === me._id) return 1;
-      if (circle && a._id === circle.ownerId) return -1;
-      if (circle && b._id === circle.ownerId) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [members, me, circle]);
+  }, [members, me]);
 
   const checkinName = useMemo(() => {
     const first = pendingForMe?.[0];
@@ -92,6 +86,8 @@ export default function FamilyScreen() {
       .filter((r) => r.requestedBy === me._id)
       .map((r) => members.find((m) => m._id === r.targetId)?.name ?? 'someone');
   }, [pendingForCircle, me, members]);
+
+  const showLookAfter = !!checkinName || waitingOn.length > 0;
 
   async function confirmSafe() {
     if (!token) return;
@@ -160,7 +156,15 @@ export default function FamilyScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <Bloub size={96} shape="nuage" color={colors.rose} expression="curieux" state="egg" paper={colors.cream} frozenAt={1.4} />
+        <Bloub
+          size={96}
+          shape="nuage"
+          color={colors.rose}
+          expression="curieux"
+          state="egg"
+          paper={colors.cream}
+          frozenAt={1.4}
+        />
       </View>
     );
   }
@@ -174,77 +178,85 @@ export default function FamilyScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.headerCard}>
-        <View style={styles.headerTop}>
-          <Bloub
-            size={52}
-            shape="nuage"
-            color={colors.rose}
-            expression="heureux"
-            state="idle"
-            paper={colors.surface}
-            frozenAt={1.2}
-          />
-          <View style={styles.headerMid}>
-            <Text style={styles.circleName}>{circle?.name ?? 'Our nest'}</Text>
-            <Text style={styles.code}>Invite code: {code || '······'}</Text>
-          </View>
-        </View>
-        <View style={styles.headerActions}>
-          <Button
-            label="Share invite"
-            icon="🔗"
-            variant="secondary"
-            small
-            onPress={() => code && shareInvite(code)}
-          />
+      <Text style={styles.title}>Family</Text>
+      <Text style={styles.purpose}>Who's here and how they're doing</Text>
+
+      <View style={styles.inviteCard}>
+        <Text style={styles.circleName}>{circle?.name ?? 'Our nest'}</Text>
+        <View style={styles.codeRow}>
+          <Text style={styles.code}>{code || '······'}</Text>
           {isOwner ? (
-            <Button label="New code" variant="ghost" small onPress={() => setCodeSheet(true)} />
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                haptic('light');
+                setCodeSheet(true);
+              }}
+            >
+              <Text style={styles.newCodeText}>New code</Text>
+            </Pressable>
           ) : null}
         </View>
+        <Button
+          label="Share invite"
+          onPress={() => code && shareInvite(code)}
+          disabled={!code}
+        />
       </View>
 
       <SectionHeader title="Members" />
 
-      {alone ? (
-        <EmptyState
-          bloub={{ state: 'exclaim', color: colors.coral }}
-          title="Your nest is just you (for now)"
-          subtitle="Share your invite code so family can hop in."
-          actionLabel="Share invite code"
-          onAction={() => code && shareInvite(code)}
-        />
-      ) : (
-        <View style={styles.memberList}>
-          {sorted.map((m) => {
-            if (me && m._id === me._id) {
-              return <MeCard key={m._id} member={m} />;
-            }
-            return (
-              <View key={m._id} style={styles.rowWrap}>
-                <MemberRow member={m} />
+      <View style={styles.memberList}>
+        {sorted.map((m) => {
+          const isMe = !!me && m._id === me._id;
+          return (
+            <View key={m._id} style={styles.rowWrap}>
+              <MemberRow
+                member={m}
+                onPress={() => router.push(`/member/${m._id}`)}
+              />
+              {isMe ? (
+                <View style={styles.youChip}>
+                  <Text style={styles.youText}>You</Text>
+                </View>
+              ) : (
                 <Pressable
                   style={StyleSheet.absoluteFill}
-                  onPress={() => router.push(`/member/${m._id}`)}
                   onLongPress={() => {
                     haptic('medium');
                     setQuickMember(m);
                   }}
                 />
-              </View>
-            );
-          })}
+              )}
+            </View>
+          );
+        })}
+      </View>
+
+      {alone ? (
+        <View style={styles.aloneRow}>
+          <Bloub
+            size={60}
+            shape="nuage"
+            color={colors.lilac}
+            expression="somnolent"
+            state="sleep"
+            paper={colors.cream}
+            frozenAt={1.4}
+          />
+          <Text style={styles.aloneText}>Waiting for your family to join</Text>
         </View>
-      )}
+      ) : null}
+
+      {showLookAfter ? <SectionHeader title="Look after" /> : null}
 
       {checkinName ? (
         <View style={styles.banner}>
-          <Text style={styles.bannerEmoji}>🫶</Text>
           <View style={styles.bannerMid}>
             <Text style={styles.bannerTitle}>{checkinName} asked if you're okay</Text>
             <Text style={styles.bannerSub}>Let them know you're safe</Text>
           </View>
-          <Button label="Confirm safe" variant="success" small onPress={confirmSafe} loading={busy} />
+          <Button label="I'm safe" variant="primary" small onPress={confirmSafe} loading={busy} />
         </View>
       ) : null}
 
@@ -252,22 +264,16 @@ export default function FamilyScreen() {
         <View style={styles.waitingCard}>
           {waitingOn.map((name, i) => (
             <Text key={`${name}-${i}`} style={styles.waitingText}>
-              ⏳ Waiting for {name}…
+              Waiting for {name} to confirm
             </Text>
           ))}
         </View>
       ) : null}
 
-      <View style={styles.footerCard}>
-        <View style={styles.footerMid}>
-          <Text style={[styles.footerTitle, !sharing && { color: colors.inkSoft }]}>
-            {sharing ? 'Location sharing is ON' : 'Location sharing is off'}
-          </Text>
-          <Text style={styles.footerSub}>
-            {sharing
-              ? `Last seen ${timeAgo(me?.lastSeen)}`
-              : 'Family cannot see where you are'}
-          </Text>
+      <View style={styles.sharingRow}>
+        <View style={styles.sharingMid}>
+          <Text style={styles.sharingTitle}>Location sharing</Text>
+          <Text style={styles.sharingValue}>{sharing ? 'On' : 'Off'}</Text>
         </View>
         <Switch
           value={sharing}
@@ -280,6 +286,7 @@ export default function FamilyScreen() {
       <Pressable
         onPress={() => setLeaveSheet(true)}
         style={styles.leaveButton}
+        hitSlop={8}
       >
         <Text style={styles.leaveText}>Leave this nest</Text>
       </Pressable>
@@ -340,30 +347,6 @@ export default function FamilyScreen() {
   );
 }
 
-function MeCard({ member }: { member: NestlyUser }) {
-  const mood = memberMood(member);
-  return (
-    <View style={styles.meCard}>
-      <MemberAvatar
-        avatar={member.avatar}
-        role={member.role}
-        size={54}
-        state={mood.state}
-        expression={mood.expression}
-      />
-      <View style={styles.meMid}>
-        <View style={styles.meNameRow}>
-          <Text style={styles.meName}>{member.name}</Text>
-          <View style={styles.youChip}>
-            <Text style={styles.youText}>You</Text>
-          </View>
-        </View>
-        <Text style={styles.meStatus}>{mood.label}</Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.cream },
   content: {
@@ -378,7 +361,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCard: {
+  title: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.ink,
+    fontFamily: 'Nunito_800ExtraBold',
+  },
+  purpose: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    marginTop: -spacing.s,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+  inviteCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.l,
     borderWidth: 1,
@@ -387,54 +383,57 @@ const styles = StyleSheet.create({
     gap: spacing.m,
     ...shadow.card,
   },
-  headerTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.l },
-  headerMid: { flex: 1, gap: 2 },
   circleName: {
     fontSize: 22,
     fontWeight: '800',
     color: colors.ink,
     fontFamily: 'Nunito_800ExtraBold',
   },
-  code: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.inkSoft,
-    letterSpacing: 1.4,
-  },
-  headerActions: {
+  codeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.s,
+    gap: spacing.m,
+  },
+  code: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.ink,
+    letterSpacing: 6,
+    fontFamily: 'Nunito_800ExtraBold',
+  },
+  newCodeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.coral,
+    fontFamily: 'Nunito_700Bold',
   },
   memberList: { gap: spacing.m },
   rowWrap: { borderRadius: radius.l },
-  meCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderRadius: radius.l,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    ...shadow.card,
-  },
-  meMid: { flex: 1, gap: 2 },
-  meNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  meName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.ink,
-    fontFamily: 'Nunito_800ExtraBold',
-  },
   youChip: {
+    position: 'absolute',
+    top: -6,
+    right: spacing.m,
     backgroundColor: colors.coralSoft,
     borderRadius: radius.pill,
     paddingHorizontal: 8,
     paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: colors.surface,
   },
   youText: { fontSize: 11, fontWeight: '800', color: colors.coral },
-  meStatus: { fontSize: 13, fontWeight: '600', color: colors.inkSoft },
+  aloneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.m,
+    paddingVertical: spacing.m,
+  },
+  aloneText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.inkFaint,
+    fontFamily: 'Nunito_600SemiBold',
+  },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -445,7 +444,6 @@ const styles = StyleSheet.create({
     borderColor: colors.amber,
     padding: spacing.l,
   },
-  bannerEmoji: { fontSize: 26 },
   bannerMid: { flex: 1, gap: 2 },
   bannerTitle: {
     fontSize: 15,
@@ -463,25 +461,25 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   waitingText: { fontSize: 13, fontWeight: '600', color: colors.inkSoft },
-  footerCard: {
+  sharingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.m,
-    backgroundColor: colors.surface,
-    borderRadius: radius.l,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.l,
-    ...shadow.card,
+    paddingVertical: spacing.s,
   },
-  footerMid: { flex: 1, gap: 2 },
-  footerTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.mint,
-    fontFamily: 'Nunito_800ExtraBold',
+  sharingMid: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.s },
+  sharingTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+    fontFamily: 'Nunito_700Bold',
   },
-  footerSub: { fontSize: 12, fontWeight: '600', color: colors.inkSoft },
+  sharingValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.inkFaint,
+    fontFamily: 'Nunito_700Bold',
+  },
   leaveButton: { alignSelf: 'center', padding: spacing.s },
   leaveText: {
     fontSize: 14,

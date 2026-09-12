@@ -1,8 +1,7 @@
 import React, { memo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Bloub } from '../Bloub';
-import { colors, radius, shadow } from '../../theme/tokens';
-import { roleAvatar, roleEmoji } from '../../lib/roles';
+import { colors } from '../../theme/tokens';
 import type { Avatar as AvatarSpec } from '../../lib/identity';
 
 interface MemberAvatarProps {
@@ -10,7 +9,6 @@ interface MemberAvatarProps {
   role?: string;
   size?: number;
   ring?: boolean;
-  badge?: string;
   state?: string;
   expression?: string;
 }
@@ -21,10 +19,8 @@ interface MemberAvatarProps {
  */
 export const MemberAvatar = memo(function MemberAvatar({
   avatar,
-  role,
   size = 48,
   ring = true,
-  badge,
   state,
   expression,
 }: MemberAvatarProps) {
@@ -47,15 +43,6 @@ export const MemberAvatar = memo(function MemberAvatar({
           frozenAt={1.2}
         />
       </View>
-      {badge ? (
-        <View style={[styles.badge, { left: size * 0.62, bottom: -2 }]}>
-          <Text style={{ fontSize: size * 0.2 }}>{badge ?? roleEmoji(role)}</Text>
-        </View>
-      ) : role ? (
-        <View style={[styles.badge, { left: size * 0.62, bottom: -2 }]}>
-          <Text style={{ fontSize: size * 0.2 }}>{roleEmoji(role)}</Text>
-        </View>
-      ) : null}
     </View>
   );
 });
@@ -66,17 +53,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  badge: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadow.card,
   },
 });
