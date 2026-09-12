@@ -68,7 +68,7 @@ export default function Onboarding() {
       await setSharingEnabled(true);
       void registerPushAndReport();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      router.replace('/(app)');
+      router.replace('/map');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong';
       setError(msg.includes('Invalid') ? 'That code does not exist — check with the sender' : msg);
@@ -140,7 +140,17 @@ export default function Onboarding() {
                       }}
                       style={[styles.roleCard, selected && styles.roleCardSelected]}
                     >
-                      <Text style={styles.roleEmoji}>{r.emoji}</Text>
+                      <Bloub
+                        size={46}
+                        shape={r.avatar.shape}
+                        color={r.avatar.color}
+                        expression={r.avatar.expression}
+                        state="idle"
+                        paper={selected ? colors.coralSoft : colors.surface}
+                        animate={selected}
+                        playSpeed={0.9}
+                        frozenAt={0.6}
+                      />
                       <Text style={[styles.roleLabel, selected && { color: colors.ink }]}>
                         {r.label}
                       </Text>
@@ -301,7 +311,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.coralSoft,
     ...shadow.card,
   },
-  roleEmoji: { fontSize: 24 },
   roleLabel: { fontSize: 12, fontWeight: '700', color: colors.inkSoft },
   hint: {
     fontSize: 13,

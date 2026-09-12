@@ -22,7 +22,7 @@ export default function Gate() {
     }
     if (remote === undefined) return; // still fetching me
     if (remote && remote.circleId) {
-      router.replace('/(app)');
+      router.replace('/map');
     } else {
       router.replace('/onboarding');
     }

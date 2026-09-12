@@ -41,6 +41,8 @@ function TabIcon({
         state={state}
         paper={colors.cream}
         frozenAt={1.2}
+        animate={focused}
+        playSpeed={0.8}
       />
     </View>
   );
