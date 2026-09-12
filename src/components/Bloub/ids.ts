@@ -27,18 +27,6 @@ export const SHAPE_LABELS: Record<ShapeId, string> = {
   goutte: 'Droplet'
 }
 
-export interface ColorOption {
-  id: ColorId
-  hex: string
-  label: string
-}
-
-export const COLOR_PALETTE: readonly ColorOption[] = COLORS.map((c) => ({
-  id: c.id,
-  hex: c.hex,
-  label: LABELS_COLOR[c.id]
-}))
-
 const LABELS_COLOR: Record<ColorId, string> = {
   encre: 'Ink',
   creme: 'Cream',
@@ -53,16 +41,6 @@ const LABELS_COLOR: Record<ColorId, string> = {
   rose: 'Pink',
   gris: 'Grey'
 }
-
-export interface ExpressionOption {
-  id: ExpressionId
-  label: string
-}
-
-export const EXPRESSION_IDS: readonly ExpressionOption[] = EXPRESSIONS.map((e) => ({
-  id: e.id,
-  label: LABELS_EXPRESSION[e.id]
-}))
 
 const LABELS_EXPRESSION: Record<ExpressionId, string> = {
   neutre: 'Neutral',
@@ -82,6 +60,28 @@ const LABELS_EXPRESSION: Record<ExpressionId, string> = {
   blase: 'Unimpressed',
   somnolent: 'Sleepy'
 }
+
+export interface ColorOption {
+  id: ColorId
+  hex: string
+  label: string
+}
+
+export const COLOR_PALETTE: readonly ColorOption[] = COLORS.map((c) => ({
+  id: c.id,
+  hex: c.hex,
+  label: LABELS_COLOR[c.id]
+}))
+
+export interface ExpressionOption {
+  id: ExpressionId
+  label: string
+}
+
+export const EXPRESSION_IDS: readonly ExpressionOption[] = EXPRESSIONS.map((e) => ({
+  id: e.id,
+  label: LABELS_EXPRESSION[e.id]
+}))
 
 const SHAPE_ALIASES: Record<string, ShapeId> = {
   round: 'cercle',
