@@ -44,3 +44,6 @@ yarn-error.*
 .build-outputs/
 
 .env
+
+build-log.txt
+build-err.txt
