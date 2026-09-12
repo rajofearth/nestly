@@ -190,11 +190,13 @@ export default function NestScreen() {
     timer: null,
   });
   const offscreenSig = useRef('');
+  const mapReadyRef = useRef(false);
+  const [, setMapReady] = useState(false);
 
   const computeOffscreen = useCallback(async () => {
     const map = mapRef.current;
     const vp = viewportRef.current;
-    if (!map || !vp) return;
+    if (!map || !vp || !mapReadyRef.current) return;
     const seq = ++recomputeSeq.current;
     const top = insetsRef.current.top + 68;
     const bottom = EDGE_PAD_BOTTOM;
@@ -268,8 +270,16 @@ export default function NestScreen() {
   }, [computeOffscreen]);
 
   useEffect(() => {
+    if (!mapReadyRef.current) return;
     scheduleRecompute();
-  }, [scheduleRecompute, markers, viewport]);
+  }, [scheduleRecompute, markers, viewport, setMapReady]);
+
+  const onMapReady = useCallback(() => {
+    if (mapReadyRef.current) return;
+    mapReadyRef.current = true;
+    setMapReady(true);
+    scheduleRecompute();
+  }, [scheduleRecompute]);
 
   useEffect(
     () => () => {
@@ -320,6 +330,7 @@ export default function NestScreen() {
         mapStyle={MAP_STYLE_URL}
         style={{ flex: 1 }}
         compassPosition={{ top: 8, right: 8 }}
+        onDidFinishLoadingMap={onMapReady}
         onRegionIsChanging={scheduleRecompute}
         onRegionDidChange={scheduleRecompute}
       >
