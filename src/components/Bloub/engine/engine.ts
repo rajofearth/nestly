@@ -277,7 +277,7 @@ export class BotEngine {
       // on garde la pose (rotation, decalage, squash) et on n'echange que le profil
       pose = { ...pose, sil: { ...pose.sil, radii: shape } }
     }
-    if (def.baseFace && expr) {
+    if ((def.baseFace || def.faceFromExpression) && expr) {
       pose = { ...pose, gaze: expr.gaze, split: expr.split, eyes: expr.eyes }
     }
     return pose

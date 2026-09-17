@@ -10,7 +10,6 @@
 
 import type * as alerts from "../alerts.js";
 import type * as auth from "../auth.js";
-import type * as chat from "../chat.js";
 import type * as checkins from "../checkins.js";
 import type * as circles from "../circles.js";
 import type * as lib_helpers from "../lib/helpers.js";
@@ -28,7 +27,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   alerts: typeof alerts;
   auth: typeof auth;
-  chat: typeof chat;
   checkins: typeof checkins;
   circles: typeof circles;
   "lib/helpers": typeof lib_helpers;

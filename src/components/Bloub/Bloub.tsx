@@ -6,13 +6,17 @@ import { EXPRESSION_BY_ID } from './engine/expressions'
 import { clamp, easings } from './engine/math'
 import { DEMI_VIEWBOX, RAYON } from './engine/repere'
 import { SHAPE_BY_ID, mixHex } from './engine/skins'
-import { STATE_BY_ID } from './engine/states'
+import { POSES, STATE_BY_ID } from './engine/states'
 import { GazeScript, TURN_TIME, lookTarget } from './gaze'
 import { resolveColor, resolveExpression, resolveShape, resolveState } from './ids'
+import { subscribeTick } from './scheduler'
 
 const R = RAYON
 const VB = DEMI_VIEWBOX
 const SCRIPT_MORPH = 1 / 60
+// Largest step the engine accepts. Subscribers tick at 15 Hz, so a skipped
+// frame is about 66 ms; 0.1 s covers it without letting the clock jump.
+const MAX_DT = 0.1
 
 export interface BloubProps {
   /** one of STATE_IDS (14) or the extra 'swirl' transition state */
@@ -36,16 +40,6 @@ export interface BloubProps {
   gaze?: GazeScript
   /** run the rAF loop; default false renders one frozen frame for cheap lists */
   animate?: boolean
-}
-
-const schedule = (cb: (ms: number) => void): number => {
-  if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(cb)
-  return setTimeout(() => cb(Date.now()), 16) as unknown as number
-}
-
-const cancel = (id: number) => {
-  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)
-  else clearTimeout(id)
 }
 
 function BloubImpl({
@@ -74,8 +68,12 @@ function BloubImpl({
   const frozen = !animate || frozenAt !== undefined
 
   const frozenFrame = useMemo<BotFrame>(() => {
+    // Frozen callers (tab icons, list thumbnails) previously all sampled 1.2 s,
+    // which is a collapsed, eyeless frame for states like `comet` and `sleep`.
+    // Fall back to the engine's per-state legibility pose instead.
+    const at = frozenAt ?? POSES[stateId] ?? 0
     const eng = new BotEngine(R, stateId, radii, expr)
-    return eng.sample(frozenAt ?? 0)
+    return eng.sample(at)
   }, [stateId, radii, expr, frozenAt])
 
   const [liveFrame, setLiveFrame] = useState<BotFrame | null>(null)
@@ -89,12 +87,10 @@ function BloubImpl({
     if (frozen) return
     const engine = new BotEngine(R, stateId, radii, expr)
     frameRef.current = { state: stateId, radii, expr }
-    let raf = 0
     let last = 0
 
     const tick = (ms: number) => {
-      raf = schedule(tick)
-      const dt = last ? Math.min((ms - last) / 1000, 0.064) : 0
+      const dt = last ? Math.min((ms - last) / 1000, MAX_DT) : 0
       last = ms
       const clock = clockRef.current
       clock.value += dt * propsRef.current.playSpeed
@@ -159,13 +155,55 @@ function BloubImpl({
       setLiveFrame(engine.sample(t))
     }
 
-    raf = schedule(tick)
-    return () => cancel(raf)
+    return subscribeTick(tick)
     // engine is (re)created when the loop starts; per-frame prop sync happens via propsRef
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frozen])
 
   const frame = frozen ? frozenFrame : liveFrame
+
+  // The gradients only depend on the arc ids, widths and gradient geometry, none
+  // of which move during an animation. The signature lets React keep the same
+  // elements frame to frame so the reconciler and the native side skip them.
+  const gradientKey = useMemo(
+    () =>
+      frame
+        ? frame.arcs
+            .map(
+              (arc) =>
+                `${arc.id}:${arc.width}:${arc.grad.x1}:${arc.grad.y1}:${arc.grad.x2}:${arc.grad.y2}:${arc.grad.stops.join(',')}`
+            )
+            .join(';')
+        : '',
+    [frame]
+  )
+
+  const gradients = useMemo(
+    () =>
+      frame?.arcs.map((arc) => (
+        <LinearGradient
+          key={arc.id}
+          id={`${uid}-${arc.id}`}
+          gradientUnits="userSpaceOnUse"
+          x1={arc.grad.x1}
+          y1={arc.grad.y1}
+          x2={arc.grad.x2}
+          y2={arc.grad.y2}
+        >
+          {arc.grad.stops.map((c, i) => (
+            <Stop key={i} offset={i / (arc.grad.stops.length - 1)} stopColor={c} />
+          ))}
+        </LinearGradient>
+      )),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [uid, gradientKey]
+  )
+
+  const inkRect = useMemo(
+    () => <Rect x={-VB} y={-VB} width={VB * 2} height={VB * 2} fill={ink} />,
+    [ink]
+  )
+
   if (!frame) return null
 
   const dotFill = (dot: DotRender) =>
@@ -203,21 +241,7 @@ function BloubImpl({
             <Circle cx={frame.notch.x} cy={frame.notch.y} r={frame.notch.r} fill="#000" />
           ) : null}
         </Mask>
-        {frame.arcs.map((arc) => (
-          <LinearGradient
-            key={arc.id}
-            id={`${uid}-${arc.id}`}
-            gradientUnits="userSpaceOnUse"
-            x1={arc.grad.x1}
-            y1={arc.grad.y1}
-            x2={arc.grad.x2}
-            y2={arc.grad.y2}
-          >
-            {arc.grad.stops.map((c, i) => (
-              <Stop key={i} offset={i / (arc.grad.stops.length - 1)} stopColor={c} />
-            ))}
-          </LinearGradient>
-        ))}
+        {gradients}
       </Defs>
 
       <G fill="none" strokeLinecap="round">
@@ -237,7 +261,7 @@ function BloubImpl({
       <G opacity={frame.bodyAlpha}>
         <Path d={frame.bodyPath} fill={paper} />
         <G mask={`url(#${maskId})`}>
-          <Rect x={-VB} y={-VB} width={VB * 2} height={VB * 2} fill={ink} />
+          {inkRect}
         </G>
       </G>
 

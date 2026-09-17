@@ -31,7 +31,6 @@ export function EmptyState({
         expression={bloub?.expression ?? 'neutre'}
         color={bloub?.color ?? colors.inkSoft}
         paper={colors.cream}
-        frozenAt={1.4}
       />
       <Text style={styles.title}>{title}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}

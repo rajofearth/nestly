@@ -81,13 +81,6 @@ export default defineSchema({
     .index("by_target_status", ["targetId", "status"])
     .index("by_circle_status", ["circleId", "status"]),
 
-  messages: defineTable({
-    circleId: v.id("circles"),
-    userId: v.id("users"),
-    text: v.string(),
-    ts: v.number(),
-  }).index("by_circle_ts", ["circleId", "ts"]),
-
   logs: defineTable({
     ts: v.number(),
     level: v.union(

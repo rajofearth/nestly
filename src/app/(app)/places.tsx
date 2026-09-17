@@ -13,7 +13,7 @@ import * as Location from 'expo-location';
 import { Camera, Map as MapLibreMap, type MapRef } from '@maplibre/maplibre-react-native';
 import { api } from '../../../convex/_generated/api';
 import type { Doc } from '../../../convex/_generated/dataModel';
-import { Bloub } from '../../components/Bloub';
+import { Bloub, COLOR_PALETTE, EXPRESSION_IDS, SHAPE_IDS } from '../../components/Bloub';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Input } from '../../components/ui/Input';
@@ -29,17 +29,70 @@ type Step = 'details' | 'map' | 'confirm';
 
 const RADIUS_OPTIONS = [100, 150, 300, 500];
 
-const PLACE_COLORS = [
-  '#FF6B4A',
-  '#3E8EDE',
-  '#2FA37C',
-  '#9B7EDE',
-  '#F0A93B',
-  '#E152B0',
+// 48px circle with a 36px blob inside: big enough to read the face, small
+// enough to keep the row compact.
+const PLACE_AVATAR_SIZE = 48;
+const PLACE_BLOB_SIZE = 36;
+
+type ShapeId = (typeof SHAPE_IDS)[number];
+type ExpressionId = (typeof EXPRESSION_IDS)[number]['id'];
+
+// Capsule and cloud lose their outline at thumbnail size. The pill goes flat
+// and the cloud's lobes blur into a smudge, so the six shapes below keep a
+// readable silhouette and a clear face.
+const PLACE_SHAPES: readonly ShapeId[] = [
+  'cercle',
+  'galet',
+  'squircle',
+  'triangle',
+  'hexagone',
+  'goutte',
 ];
 
-function placeColor(index: number): string {
-  return PLACE_COLORS[index % PLACE_COLORS.length];
+// Friendly and awake. Angry, sad, scared, suspicious, unimpressed and sleepy
+// faces make a place look unhappy. Confused or sheepish reads as unsure, the
+// wrong mood for a spot someone chose.
+const PLACE_EXPRESSIONS: readonly ExpressionId[] = [
+  'neutre',
+  'attentif',
+  'surpris',
+  'excite',
+  'heureux',
+  'hilare',
+  'curieux',
+  'fier',
+];
+
+// Cream would vanish on the creamDeep backdrop. Ink reads as a black hole and
+// grey is the flat rotation this replaces.
+const PLACE_COLORS = COLOR_PALETTE.filter(
+  (c) => c.id !== 'creme' && c.id !== 'encre' && c.id !== 'gris',
+);
+
+interface PlaceLook {
+  shape: ShapeId;
+  color: string;
+  expression: ExpressionId;
+}
+
+/** FNV-1a, 32 bits. No dependency, and the same id always lands on the same look. */
+function hashString(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function placeLook(place: Place): PlaceLook {
+  const hash = hashString(place._id || place.name);
+  // Separate bit slices so shape, color and expression do not all move together.
+  return {
+    shape: PLACE_SHAPES[hash % PLACE_SHAPES.length],
+    color: PLACE_COLORS[(hash >>> 8) % PLACE_COLORS.length].hex,
+    expression: PLACE_EXPRESSIONS[(hash >>> 16) % PLACE_EXPRESSIONS.length],
+  };
 }
 
 export default function PlacesScreen() {
@@ -118,47 +171,51 @@ export default function PlacesScreen() {
           />
         ) : (
           <View style={styles.placeList}>
-            {(places ?? []).map((place, index) => (
-              <View key={place._id} style={styles.rowWrap}>
-                <View style={styles.placeCard}>
-                  <Bloub
-                    size={40}
-                    shape="goutte"
-                    color={placeColor(index)}
-                    expression="attentif"
-                    paper={colors.cream}
-                    frozenAt={1.2}
+            {(places ?? []).map((place) => {
+              const look = placeLook(place);
+              return (
+                <View key={place._id} style={styles.rowWrap}>
+                  <View style={styles.placeCard}>
+                    <View style={styles.placeAvatar}>
+                      <Bloub
+                        size={PLACE_BLOB_SIZE}
+                        shape={look.shape}
+                        color={look.color}
+                        expression={look.expression}
+                        paper={colors.creamDeep}
+                      />
+                    </View>
+                    <View style={styles.placeMid}>
+                      <Text style={styles.placeName}>{place.name}</Text>
+                      <Text style={styles.placeRadius}>within {place.radiusM} m</Text>
+                    </View>
+                    <View style={styles.chipRow}>
+                      {place.notifyOnArrive ? (
+                        <View style={[styles.chip, { backgroundColor: colors.mintSoft }]}>
+                          <Text style={styles.chipText}>Arrivals on</Text>
+                        </View>
+                      ) : null}
+                      {place.notifyOnLeave ? (
+                        <View style={[styles.chip, { backgroundColor: colors.lilacSoft }]}>
+                          <Text style={styles.chipText}>Departures on</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => {
+                      haptic('light');
+                      setEditingPlace(place);
+                    }}
+                    onLongPress={() => {
+                      haptic('medium');
+                      setRemoveTarget(place);
+                    }}
                   />
-                  <View style={styles.placeMid}>
-                    <Text style={styles.placeName}>{place.name}</Text>
-                    <Text style={styles.placeRadius}>within {place.radiusM} m</Text>
-                  </View>
-                  <View style={styles.chipRow}>
-                    {place.notifyOnArrive ? (
-                      <View style={[styles.chip, { backgroundColor: colors.mintSoft }]}>
-                        <Text style={styles.chipText}>Arrivals on</Text>
-                      </View>
-                    ) : null}
-                    {place.notifyOnLeave ? (
-                      <View style={[styles.chip, { backgroundColor: colors.lilacSoft }]}>
-                        <Text style={styles.chipText}>Departures on</Text>
-                      </View>
-                    ) : null}
-                  </View>
                 </View>
-                <Pressable
-                  style={StyleSheet.absoluteFill}
-                  onPress={() => {
-                    haptic('light');
-                    setEditingPlace(place);
-                  }}
-                  onLongPress={() => {
-                    haptic('medium');
-                    setRemoveTarget(place);
-                  }}
-                />
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -518,6 +575,16 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   placeMid: { flex: 1, gap: 2 },
+  placeAvatar: {
+    width: PLACE_AVATAR_SIZE,
+    height: PLACE_AVATAR_SIZE,
+    borderRadius: PLACE_AVATAR_SIZE / 2,
+    backgroundColor: colors.creamDeep,
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   placeName: {
     fontSize: 16,
     fontWeight: '800',

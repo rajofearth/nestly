@@ -24,8 +24,9 @@ import { colors, radius, shadow, spacing, typography } from '../../theme/tokens'
 import { useMe, useMyToken } from '../../lib/identity';
 import { useMeSync } from '../../lib/useMeSync';
 import { useCircle } from '../../lib/useCircle';
-import { MAP_STYLE_URL, speedKmh } from '../../lib/utils';
+import { MAP_STYLE_URL } from '../../lib/utils';
 import { memberMood } from '../../lib/memberStatus';
+import { useNow } from '../../hooks/useNow';
 import { MemberAvatar } from '../../components/ui/MemberAvatar';
 import { Sheet } from '../../components/ui/Sheet';
 import { Button } from '../../components/ui/Button';
@@ -56,20 +57,15 @@ const EDGE_PAD_BOTTOM = CHIP_ROW_HEIGHT + spacing.m + 12;
 const RECOMPUTE_MS = 250;
 const FOCUS_ZOOM = 15;
 
-function statusWord(mood: Mood, member: NestlyUser): string {
+function statusWord(mood: Mood): string {
+  // The mood already carries the single source of truth for the wording.
   switch (mood.state) {
-    case 'comet': {
-      const kmh = speedKmh(member.speed);
-      return kmh != null ? `Moving · ${kmh} km/h` : 'Moving';
-    }
     case 'sleep':
       return 'Offline';
     case 'alert':
       return 'Low battery';
-    case 'notify':
-      return 'Charging';
     default:
-      return 'Resting';
+      return mood.label;
   }
 }
 
@@ -95,6 +91,7 @@ export default function NestScreen() {
   const { circle, members, loading } = useCircle();
   const insets = useSafeAreaInsets();
   const haptic = useHaptics();
+  const now = useNow();
 
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
@@ -336,7 +333,7 @@ export default function NestScreen() {
       >
         <Camera ref={cameraRef} initialViewState={{ zoom: 13 }} maxZoom={18} />
         {markers.map((mk) => {
-          const mood = memberMood(mk.member);
+          const mood = memberMood(mk.member, now);
           return (
             <MarkerItem
               key={mk.id}
@@ -351,7 +348,7 @@ export default function NestScreen() {
       </Map>
 
       {offscreen.map((edge) => {
-        const mood = memberMood(edge.member);
+        const mood = memberMood(edge.member, now);
         return (
           <Pressable
             key={edge.id}
@@ -416,7 +413,7 @@ export default function NestScreen() {
           contentContainerStyle={styles.chips}
         >
           {members.map((m) => {
-            const mood = memberMood(m);
+            const mood = memberMood(m, now);
             return (
               <Pressable
                 key={m._id}
@@ -440,7 +437,7 @@ export default function NestScreen() {
                     {m.name}
                   </Text>
                   <Text numberOfLines={1} style={styles.chipStatus}>
-                    {statusWord(mood, m)}
+                    {statusWord(mood)}
                   </Text>
                 </View>
               </Pressable>

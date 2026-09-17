@@ -12,10 +12,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug,
     version,
     scheme: 'nestly',
+    owner: 'rajofearth',
     userInterfaceStyle: 'light',
     extra: {
       eas: {
-        projectId: 'b7f0d1a2-8c4e-4b6e-9f3a-5d2e1c0a9b8f',
+        projectId: 'e421fdf3-f51e-4ee1-80b4-4359b7be476d',
       },
     },
     android: {
@@ -38,6 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           'FOREGROUND_SERVICE_LOCATION',
           'POST_NOTIFICATIONS',
           'VIBRATE',
+          'RECEIVE_BOOT_COMPLETED',
         ]),
       ),
     },

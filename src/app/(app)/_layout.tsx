@@ -11,6 +11,7 @@ import * as Location from 'expo-location';
 import { usePushRegistration } from '../../services/push';
 import {
   cacheTaskContext,
+  checkAlerts,
   setConvexUrl,
   setSharingEnabled,
   startBackgroundTracking,
@@ -40,7 +41,6 @@ function TabIcon({
         expression={expression}
         state={state}
         paper={colors.cream}
-        frozenAt={1.2}
         animate={focused}
         playSpeed={0.8}
       />
@@ -66,13 +66,23 @@ export default function AppLayout() {
     (async () => {
       const { granted } = await Location.requestForegroundPermissionsAsync();
       if (!granted) return;
+      // Background location needs its own grant on Android 11+; without it the
+      // foreground service never starts and there are no background updates.
+      await Location.requestBackgroundPermissionsAsync();
       await setSharingEnabled(true);
       await startBackgroundTracking();
-      const { granted: bg } = await Location.getBackgroundPermissionsAsync();
-      if (bg) await startBackgroundTracking();
       void registerPushRef.current();
     })();
   }, []);
+
+  // Foreground alert watch: raise local notifications while the app is open,
+  // even when the device is not moving and the location task is idle.
+  useEffect(() => {
+    if (!token) return;
+    void checkAlerts(token);
+    const id = setInterval(() => void checkAlerts(token), 30_000);
+    return () => clearInterval(id);
+  }, [token]);
 
   // Keep the background task's cached context fresh.
   useEffect(() => {
@@ -124,15 +134,6 @@ export default function AppLayout() {
           title: 'Places',
           tabBarIcon: ({ focused }) => (
             <TabIcon shape="goutte" color={colors.mint} expression="attentif" state="idle" focused={focused} size={34} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon shape="capsule" color={colors.sky} expression="excite" state="idle" focused={focused} size={34} />
           ),
         }}
       />

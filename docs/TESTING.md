@@ -27,8 +27,10 @@ Verify during onboarding:
 
 ## Presence reactions (member moods)
 
-- [ ] Carry one device while walking/driving: its bloub switches to `comet`
-      with an "On the move · N km/h" label; expression escalates past ~30 km/h.
+- [ ] Walk with a device: its bloub shows the `wide` state and "Walking · N km/h".
+- [ ] Jog or cycle: the `orbit` state and "Running · N km/h".
+- [ ] Drive above ~29 km/h: the `comet` state and "Driving · N km/h".
+- [ ] Stand still: "Resting" and 0 km/h (the regression this change fixes).
 - [ ] Plug a low (< 15%) device in: mood flips to "Charging up".
 - [ ] Airplane-mode a device for 8+ minutes: its bloub goes to sleep with
       "Last seen …".
@@ -46,15 +48,10 @@ Verify during onboarding:
 
 ## Check-ins
 
-- [ ] Device A: member detail → request check-in from B. B sees the pending
-      request and a push (if configured — see Limitations).
+- [ ] Check-in requests have no UI entry point right now. The section is pending
+      a decision.
 - [ ] B confirms "I'm OK": A gets the "checked in" alert.
 - [ ] Only one pending request resolves per respond (latest wins).
-
-## Chat
-
-- [ ] Messages appear on both devices in realtime, grouped by sender and day.
-- [ ] Empty message is rejected; > 2000 chars is rejected.
 
 ## Family / Me
 
@@ -68,8 +65,9 @@ Verify during onboarding:
 
 ## Known limitations
 
-- **Push is in-app only** until Firebase is configured (`docs/PUSH_SETUP.md`):
-  alerts appear in the app but no system notifications.
+- **Push needs a rebuilt APK**: `google-services.json` is now present, so remote
+  push works after a rebuild. Local notifications come from the background task
+  while it runs and stop when the app is force-stopped.
 - **Debug-keystore signing**: the APK is signed with the debug keystore — fine
   for sideloading, not for Play Store.
 - **Dev deployment data**: the backend is a Convex dev deployment; test data

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '../../theme/tokens';
 import { MemberAvatar } from './MemberAvatar';
 import { memberMood } from '../../lib/memberStatus';
+import { useNow } from '../../hooks/useNow';
 import { roleLabel } from '../../lib/roles';
 import { timeAgo } from '../../lib/utils';
 import type { NestlyUser } from '../../lib/identity';
@@ -15,7 +16,8 @@ interface MemberRowProps {
 }
 
 export function MemberRow({ member, onPress, distanceM }: MemberRowProps) {
-  const mood = memberMood(member);
+  const now = useNow();
+  const mood = memberMood(member, now);
 
   return (
     <Pressable

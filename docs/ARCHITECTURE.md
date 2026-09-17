@@ -35,14 +35,13 @@
 | `_layout.tsx` | Root stack: ConvexProvider, Nunito fonts, splash gate while identity bootstraps. Also imports `services/tracking` so the background task is defined at startup. |
 | `index.tsx` | Gate. Token + circle membership → `(app)`; anything else → `onboarding`. |
 | `onboarding.tsx` | Welcome → identity (name + role, live bloub preview) → create nest (name) or join nest (6-char code). Registers, creates/joins, stores token, enables sharing, requests push. |
-| `(app)/_layout.tsx` | Tab layout: Nest (map), Family, Places, Chat, Me. Hidden routes: `member/[id]`, `alerts`. Boots permissions, background tracking, push registration, and refreshes the background task's place cache. |
+| `(app)/_layout.tsx` | Tab layout: Nest (map), Family, Places, Me. Hidden routes: `member/[id]`, `alerts`. Boots permissions, background tracking, push registration, and refreshes the background task's place cache. |
 | `(app)/map.tsx` | Live MapLibre map with member markers, own-location camera, place pins, SOS long-press button with confirm sheet. |
 | `(app)/family.tsx` | Member list with moods, invite code share/regenerate, remove member (owner), location-sharing toggle. |
 | `(app)/places.tsx` | Place CRUD with a map picker (emoji, radius 100/150/300/500 m), arrive/leave notification toggles, recent place-event history. |
-| `(app)/chat.tsx` | Circle chat, grouped by sender and day, 2000-char limit. |
 | `(app)/me.tsx` | Profile editor (name, role, bloub avatar picker: 8 shapes / 12 colors / 16 expressions), device + battery readout, sharing toggle. |
 | `(app)/alerts.tsx` | Alert feed (SOS, memberJoined, arrive/leave, checkin, batteryLow) with mark-read. |
-| `(app)/member/[id].tsx` | Member detail: breadcrumb trail on a map, speed/battery/last-seen stats, check-in request button. |
+| `(app)/member/[id].tsx` | Member detail: breadcrumb trail on a map, speed/battery/last-seen stats. |
 
 ### Identity store (`src/lib/identity.ts`)
 
@@ -97,11 +96,17 @@ how avatars react to data. Priority order:
 | --- | --- | --- | --- | --- |
 | No presence or `lastSeen` older than 8 min | `sleep` | `somnolent` | off | "Last seen …" |
 | Low-power mode, battery ≤ 15%, not charging | `alert` | `effraye` | warn | "Low battery · N%" |
-| Speed > 2.2 m/s | `comet` | `excite` (> 8.3 m/s) else `fier` | ok | "On the move · N km/h" |
+| Speed 0.5-2.0 m/s | `wide` | `curieux` | ok | "Walking · N km/h" |
+| Speed 2.0-8.0 m/s | `orbit` | `excite` | ok | "Running · N km/h" |
+| Speed above 8.0 m/s | `comet` | `excite` | ok | "Driving · N km/h" |
 | Battery ≤ 15% while charging | `notify` | `heureux` | ok | "Charging up" |
 | Otherwise | `idle` | `heureux` | ok | "Resting" |
 
-`batteryLabel(user)` renders the battery pill (🔋 / 🪫 / ⚡).
+The states `wide`, `notify`, `orbit` and `comet` carry `faceFromExpression: true`,
+so the mood expression replaces their face while their own animation stays.
+
+`batteryLabel(user)` renders the battery pill as plain text, like "80% · charging"
+or "12% · low".
 
 ## Backend (Convex)
 
@@ -115,7 +120,6 @@ how avatars react to data. Priority order:
 | `placeEvents` | `by_circle_ts`, `by_place` | Append-only arrive/leave log; deleted along with their place. |
 | `breadcrumbs` | `by_user_ts` | Trimmed to the last 200 per user on every insert. |
 | `checkinRequests` | `by_target_status`, `by_circle_status` | `status: "pending" \| "ok"`. |
-| `messages` | `by_circle_ts` | Trimmed to the last 300 per circle; max 2000 chars. |
 | `alerts` | `by_circle_ts`, `by_target` | Types: `sos`, `memberJoined`, `arrive`, `leave`, `batteryLow`, `checkin`. `toUserId` absent = whole circle. |
 
 ### Function map
@@ -127,7 +131,6 @@ how avatars react to data. Priority order:
 | `convex/presence.ts` | `heartbeat` (mutation, patches presence + `lastSeen`), `breadcrumb` (mutation, keeps last 200), `breadcrumbsForUser` (query, default limit 100, max 200, filtered to caller's circle) |
 | `convex/places.ts` | `list`, `add`, `remove` (also deletes the place's events), `events` (query, joined with member names), `recordPlaceEvent` (mutation — see below) |
 | `convex/checkins.ts` | `request` (alert + push to target), `respond` (answers the caller's latest pending request; alert + push to requester), `pendingForMe`, `pendingForCircle` |
-| `convex/chat.ts` | `list` (ascending, default 100), `send` (trims, 2000-char cap, trims table to 300) |
 | `convex/alerts.ts` | `list` (scans last 200 in circle, keeps those addressed to me or everyone, default limit 100), `markRead`, `sos` (alert + push to all other members) |
 | `convex/push.ts` | `getPushTargets` (internal query), `sendPush` (internal action), `queuePush` (helper — see below) |
 | `convex/lib/helpers.ts` | `requireUser`, `requireCircleUser`, `getCircleMembers`, `publicUser`, `insertAlert`, `genCode`, `genToken` |
@@ -152,25 +155,38 @@ on builds without Firebase config.
 
 All client-side detection happens inside the background task
 `nestly-location-task` (`src/services/tracking.ts`), started via
-`Location.startLocationUpdatesAsync` (balanced accuracy, 15 m distance interval,
-20 s time interval, Android foreground service with a persistent notification).
+`Location.startLocationUpdatesAsync` (balanced accuracy, no distance floor,
+15 s time interval, Android foreground service with a persistent notification).
+The task runs while the app is alive in the background. It stops when the app is
+force-stopped or swiped away.
 
 1. **Context cache** — the `(app)` tab layout writes the auth token and the
    current `places` list into AsyncStorage (`cacheTaskContext`) whenever the
    places subscription changes. The task reads this cache; it never queries
    Convex directly.
-2. **Heartbeat** — throttled to one per 12 s. Reads battery level/state and
+2. **Speed** — `speedFromFix` rejects the two failure modes that produced
+   nonsense: a bad fix (accuracy worse than 60 m) or an implausible value (above
+   100 m/s) is dropped, and if the phone did not move further than its own
+   accuracy radius it reports 0. The distance between fixes is the harder
+   evidence, so it also supplies a speed when the OS value is missing.
+3. **Heartbeat** — throttled to one per 12 s. Reads battery level/state and
    low-power mode (`expo-battery`), then POSTs `presence:heartbeat` to
-   `<deployment>.site/api/mutation` over plain fetch. Failures are swallowed;
-   the next tick retries.
-3. **Geofence** — for each cached place, haversine distance vs `radiusM`. The
+   `<deployment>.site/api/mutation` over plain fetch. The server clamps speed to
+   0–100 m/s and drops null fields. Failures are swallowed; the next tick retries.
+4. **Breadcrumbs** — throttled to one per 60 s, POSTed from the same task to
+   `presence:breadcrumb`, so the member trail map has real points.
+5. **Geofence** — for each cached place, haversine distance vs `radiusM`. The
    inside/outside state per place is persisted in AsyncStorage, so transitions
    are edge-triggered (one event per crossing, not per tick). On enter/exit it
    POSTs `places:recordPlaceEvent`; the server inserts the `placeEvents` row
    and, when the place's `notifyOnArrive`/`notifyOnLeave` flag matches, fans out
    an alert + push to the rest of the circle.
-4. **Breadcrumbs** — written from the foreground map/member screens via the
-   normal Convex client, not from the background task.
+6. **Alerts** — throttled to one poll per 20 s. The task queries
+   `alerts:since` over plain HTTP with a cursor kept in AsyncStorage, then raises
+   a local notification for anything new that is addressed to this member and was
+   not sent by them (`notify.ts`). This is how the app tells the family about a
+   place event without a push service. A foreground interval in `(app)/_layout`
+   runs the same poll while a screen is open.
 
 ## Auth model
 

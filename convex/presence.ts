@@ -2,22 +2,44 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireCircleUser, requireUser } from "./lib/helpers";
 
+// Sanity ceiling for GPS speed: 100 m/s is roughly 360 km/h.
+const MAX_SPEED_MPS = 100;
+
 export const heartbeat = mutation({
   args: {
     token: v.string(),
     lat: v.number(),
     lng: v.number(),
-    accuracy: v.optional(v.number()),
-    speed: v.optional(v.number()),
-    heading: v.optional(v.number()),
-    battery: v.optional(v.number()),
-    isCharging: v.optional(v.boolean()),
-    isLowPower: v.optional(v.boolean()),
-    deviceModel: v.optional(v.string()),
+    accuracy: v.optional(v.union(v.number(), v.null())),
+    speed: v.optional(v.union(v.number(), v.null())),
+    heading: v.optional(v.union(v.number(), v.null())),
+    battery: v.optional(v.union(v.number(), v.null())),
+    isCharging: v.optional(v.union(v.boolean(), v.null())),
+    isLowPower: v.optional(v.union(v.boolean(), v.null())),
+    deviceModel: v.optional(v.union(v.string(), v.null())),
   },
-  handler: async (ctx, { token, ...presence }) => {
+  handler: async (
+    ctx,
+    { token, lat, lng, accuracy, speed, heading, battery, isCharging, isLowPower, deviceModel },
+  ) => {
     const user = await requireUser(ctx, token);
-    await ctx.db.patch(user._id, { ...presence, lastSeen: Date.now() });
+    // A null, NaN or negative speed means the device is still.
+    const cleanSpeed =
+      speed != null && Number.isFinite(speed)
+        ? Math.min(Math.max(speed, 0), MAX_SPEED_MPS)
+        : 0;
+    await ctx.db.patch(user._id, {
+      lat,
+      lng,
+      speed: cleanSpeed,
+      lastSeen: Date.now(),
+      ...(accuracy != null ? { accuracy } : {}),
+      ...(heading != null ? { heading } : {}),
+      ...(battery != null ? { battery } : {}),
+      ...(isCharging != null ? { isCharging } : {}),
+      ...(isLowPower != null ? { isLowPower } : {}),
+      ...(deviceModel != null ? { deviceModel } : {}),
+    });
   },
 });
 

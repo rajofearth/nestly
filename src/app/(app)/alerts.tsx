@@ -89,7 +89,6 @@ export default function Alerts() {
             expression="somnolent"
             state="sleep"
             paper={colors.cream}
-            frozenAt={1.4}
           />
           <Text style={styles.emptyTitle}>All quiet in the nest</Text>
           <Text style={styles.emptySub}>

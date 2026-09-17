@@ -3,40 +3,32 @@ import Constants from 'expo-constants';
 import { useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useMyToken } from '../lib/identity';
+import { ensureAlertChannel, ensureNotificationPermission } from './notify';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
+/**
+ * Gets the device ready to receive alerts: notification permission, the
+ * Android channel, then the Expo push token. Each step is independent, so a
+ * build without Firebase still gets permission and the channel for local
+ * notifications (see `notify.ts`).
+ */
 export async function registerPushAndReport(): Promise<string | null> {
+  let granted = false;
   try {
-    const existing = await Notifications.getPermissionsAsync();
-    let granted = existing.granted;
-    if (!granted) {
-      const req = await Notifications.requestPermissionsAsync();
-      granted = req.granted;
-    }
-    if (!granted) return null;
+    granted = await ensureNotificationPermission();
+    await ensureAlertChannel();
+  } catch {
+    return null;
+  }
+  if (!granted) return null;
 
-    await Notifications.setNotificationChannelAsync('nestly-alerts', {
-      name: 'Family alerts',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF6B4A',
-    });
-
+  try {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
     const expoToken = await Notifications.getExpoPushTokenAsync({
       projectId: projectId ?? undefined,
     });
     return expoToken.data;
   } catch {
-    // No Firebase config on this build — in-app alerts still work.
+    // No Firebase config on this build — local notifications still work.
     return null;
   }
 }

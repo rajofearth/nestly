@@ -24,6 +24,37 @@ export const list = query({
   },
 });
 
+// Notification cursor query for the background task. It asks for everything
+// newer than the last seen timestamp and decides locally what to notify.
+export const since = query({
+  args: { token: v.string(), since: v.optional(v.number()) },
+  handler: async (ctx, { token, since }) => {
+    const { user, circleId } = await requireCircleUser(ctx, token);
+    const recent = await ctx.db
+      .query("alerts")
+      .withIndex("by_circle_ts", (q) => q.eq("circleId", circleId))
+      .order("desc")
+      .take(50);
+    const members = await getCircleMembers(ctx, circleId);
+    const names = new Map(members.map((m) => [m._id, m.name] as const));
+    return recent
+      .filter(
+        (alert) =>
+          alert.ts > (since ?? 0) &&
+          alert.fromUserId !== user._id &&
+          (alert.toUserId === undefined || alert.toUserId === user._id),
+      )
+      .map((alert) => ({
+        _id: alert._id,
+        type: alert.type,
+        fromUserId: alert.fromUserId,
+        fromName: names.get(alert.fromUserId) ?? "Someone",
+        ts: alert.ts,
+        payload: alert.payload,
+      }));
+  },
+});
+
 export const markRead = mutation({
   args: { token: v.string(), alertId: v.id("alerts") },
   handler: async (ctx, { token, alertId }) => {

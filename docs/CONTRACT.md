@@ -12,7 +12,6 @@ Mirrors `convex/*.ts` exactly. If you change the backend, change this file.
 - **placeEvents**: `_id`, `circleId`, `userId`, `placeId`, `type` ("arrive"|"leave"), `ts`. Indexes: `by_circle_ts`, `by_place`. Deleted along with their place.
 - **breadcrumbs**: `_id`, `circleId`, `userId`, `lat`, `lng`, `speed`, `ts`. Index: `by_user_ts`. Keep last 200 per user (trimmed on insert).
 - **checkinRequests**: `_id`, `circleId`, `requestedBy`, `targetId`, `status` ("pending"|"ok"), `ts`, `respondedTs` (optional). Indexes: `by_target_status`, `by_circle_status`.
-- **messages**: `_id`, `circleId`, `userId`, `text` (max 2000 chars), `ts`. Index: `by_circle_ts`. Keep last 300 per circle.
 - **alerts**: `_id`, `circleId`, `type` ("sos"|"memberJoined"|"arrive"|"leave"|"batteryLow"|"checkin"), `fromUserId`, `toUserId` (optional; absent = whole circle), `payload` (optional any), `ts`, `read`. Indexes: `by_circle_ts`, `by_target`.
 
 ## Auth
@@ -33,7 +32,7 @@ Custom lightweight auth. `auth:register` mints a token (timestamp + Math.random 
   - `get(token)` → `null` or `{circle, members: publicUser[], placesCount}` (query — members carry live presence)
   - `getByCode(code)` → `{name}` or `null` (query, **no auth** — join preview only)
 - `convex/presence.ts`
-  - `heartbeat(token, {lat, lng, accuracy?, speed?, heading?, battery?, isCharging?, isLowPower?, deviceModel?})` — patches presence + `lastSeen`
+  - `heartbeat(token, {lat, lng, accuracy?, speed?, heading?, battery?, isCharging?, isLowPower?, deviceModel?})` — patches presence + `lastSeen`. `accuracy`, `speed` and `heading` also accept `null`. The server sets `speed` to a finite `0..100` m/s (null, NaN or negative means still) and omits any other field that arrives null, so a bad fix can never store a garbage speed or drop the heartbeat.
   - `breadcrumb(token, {lat, lng, speed})` — inserts and trims to last 200 per user
   - `breadcrumbsForUser(token, userId, limit?)` → recent crumbs (desc, default limit 100, max 200), filtered to the caller's circle
 - `convex/places.ts`
@@ -46,13 +45,11 @@ Custom lightweight auth. `auth:register` mints a token (timestamp + Math.random 
   - `request(token, targetId)` → `{requestId}`; inserts a `checkin` alert (`payload.kind: "request"`) targeted at the user + push to target
   - `respond(token, status: "ok")` — answers the caller's **latest pending** request (throws if none); patches `status`/`respondedTs`, inserts a `checkin` alert (`payload.kind: "responded"`) targeted at the requester + push to requester
   - `pendingForMe(token)`, `pendingForCircle(token)` (queries)
-- `convex/chat.ts`
-  - `list(token, limit?)` → messages **ascending**, default last 100
-  - `send(token, text)` — trims; throws on empty or > 2000 chars; trims table to last 300
 - `convex/alerts.ts`
   - `list(token, limit?)` — scans the last 200 alerts in the circle, keeps those with no `toUserId` or `toUserId === me`, default limit 100
   - `markRead(token, alertId)` — only own or circle-wide alerts
   - `sos(token, payload?)` — inserts an `sos` alert (whole circle) + push to all other members
+  - `since(token, since?)` — notification cursor for the background task: up to 50 newest alerts in the circle with `ts > since`, excluding the caller's own actions and alerts addressed to someone else. Returns `{_id, type, fromUserId, fromName, ts, payload?}`, newest first.
 - `convex/push.ts`
   - `getPushTargets` (internal query) — resolves userIds to `{userId, pushToken}`, dropping users without a token
   - `sendPush` (internal action) — POSTs to the Expo push API in chunks of 100 tokens
@@ -61,6 +58,8 @@ Custom lightweight auth. `auth:register` mints a token (timestamp + Math.random 
 ## Push
 
 Expo push API via the scheduled internal action. Registration is optional — if the device can't get an Expo push token (no Firebase config), the app still works and alerts are in-app only. See `docs/PUSH_SETUP.md` to enable delivery.
+
+The app also raises its own local notifications (`src/services/notify.ts`). The background task polls `alerts:since` with a cursor and calls `scheduleNotificationAsync` for each new alert, so the family hears about a place event even with no push service, for as long as the background task is running. This stops when the app is force-stopped.
 
 ## Conventions
 

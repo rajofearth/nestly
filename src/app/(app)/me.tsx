@@ -27,6 +27,7 @@ import { colors, radius, shadow, typography } from '../../theme/tokens';
 import { useIdentity, useMyToken } from '../../lib/identity';
 import { useMeSync } from '../../lib/useMeSync';
 import { useCircle } from '../../lib/useCircle';
+import { memberMood, motionKey, motionLabel } from '../../lib/memberStatus';
 import { ROLES, roleAvatar, roleLabel, type RoleId } from '../../lib/roles';
 import {
   getSharingEnabled,
@@ -35,12 +36,14 @@ import {
   stopBackgroundTracking,
 } from '../../services/tracking';
 import { hapticSuccess, useHaptics } from '../../hooks/useHaptics';
+import { useNow } from '../../hooks/useNow';
 
 export default function Me() {
   const token = useMyToken();
   const me = useMeSync();
   const { circle } = useCircle();
   const haptic = useHaptics();
+  const now = useNow();
   const signOut = useIdentity((s) => s.signOut);
 
   const updateProfile = useMutation(api.auth.updateProfile);
@@ -89,11 +92,11 @@ export default function Me() {
 
   if (!me) return <View style={styles.flex} />;
 
+  const mood = memberMood(me, now);
   const speed = me.speed ?? null;
-  const moving = speed !== null && speed > 0;
   const deviceLine = [
     Device.modelName ?? 'Phone',
-    moving ? `On the move · ${Math.round(speed * 3.6)} km/h` : null,
+    motionKey(speed) !== 'still' ? motionLabel(speed) : null,
     batteryPct !== null ? `${batteryPct}%` : null,
     charging ? 'charging' : null,
   ]
@@ -175,10 +178,10 @@ export default function Me() {
         <View style={styles.center}>
           <Bloub
             size={96}
-            state="idle"
+            state={mood.state}
             shape={me.avatar.shape}
             color={me.avatar.color}
-            expression={me.avatar.expression}
+            expression={mood.expression}
             paper={colors.cream}
             animate
           />
@@ -352,7 +355,6 @@ export default function Me() {
                   color={color}
                   expression={expression}
                   paper={colors.cream}
-                  frozenAt={1.2}
                 />
               </Pressable>
             ))}
@@ -403,7 +405,6 @@ export default function Me() {
                   color={color}
                   expression={e.id}
                   paper={colors.cream}
-                  frozenAt={1.2}
                 />
                 <Text style={styles.exprLabel}>{e.label}</Text>
               </Pressable>

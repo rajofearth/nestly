@@ -40,7 +40,7 @@ export const MemberAvatar = memo(function MemberAvatar({
           expression={expression ?? avatar.expression}
           state={state ?? 'idle'}
           paper={colors.cream}
-          frozenAt={1.2}
+          animate
         />
       </View>
     </View>

@@ -25,11 +25,6 @@ export function timeAgo(ts?: number | null): string {
   return 'long ago';
 }
 
-export function speedKmh(mps?: number | null): number | null {
-  if (mps == null || mps < 0) return null;
-  return Math.round(mps * 3.6);
-}
-
 export function haversineMeters(
   aLat: number,
   aLng: number,

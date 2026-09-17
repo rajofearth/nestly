@@ -149,7 +149,6 @@ export default function Onboarding() {
                         paper={selected ? colors.coralSoft : colors.surface}
                         animate={selected}
                         playSpeed={0.9}
-                        frozenAt={0.6}
                       />
                       <Text style={[styles.roleLabel, selected && { color: colors.ink }]}>
                         {r.label}

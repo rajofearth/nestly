@@ -193,6 +193,13 @@ export interface StateDef {
    * sur la video, c'est precisement ce qu'on reproduit.
    */
   baseFace: boolean
+  /**
+   * true = l'etat garde ses arc/particules propres mais laisse l'expression
+   * choisie remplacer son visage. Sert aux etats portes par les donnees live
+   * (marche, course, conduite, charge) : le mouvement reste lisible, l'humeur
+   * du membre s'affiche quand meme.
+   */
+  faceFromExpression?: boolean
   pose(local: number): Pose
 }
 
@@ -269,6 +276,7 @@ export const STATES: StateDef[] = [
     morph: 0.55,
     blinkIn: true,
     baseFace: false,
+    faceFromExpression: true,
     baseBody: true,
     pose: () =>
       base({
@@ -320,6 +328,7 @@ export const STATES: StateDef[] = [
     morph: 0.5,
     blinkIn: true,
     baseFace: false,
+    faceFromExpression: true,
     baseBody: true,
     pose: (t) => {
       // Pop du point bleu : pic a +14 % vers 0.3 s puis stabilisation.
@@ -438,6 +447,7 @@ export const STATES: StateDef[] = [
     minDuration: 2.5,
     morph: 0.6,
     baseFace: false,
+    faceFromExpression: true,
     baseBody: false,
     blinkIn: false,
     pose: (t) => {
@@ -554,6 +564,7 @@ export const STATES: StateDef[] = [
     minDuration: 2.4,
     morph: 0.45,
     baseFace: false,
+    faceFromExpression: true,
     baseBody: false,
     blinkIn: false,
     pose: (t) => {

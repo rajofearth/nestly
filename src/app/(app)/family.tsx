@@ -163,7 +163,6 @@ export default function FamilyScreen() {
           expression="curieux"
           state="egg"
           paper={colors.cream}
-          frozenAt={1.4}
         />
       </View>
     );
@@ -242,7 +241,6 @@ export default function FamilyScreen() {
             expression="somnolent"
             state="sleep"
             paper={colors.cream}
-            frozenAt={1.4}
           />
           <Text style={styles.aloneText}>Waiting for your family to join</Text>
         </View>

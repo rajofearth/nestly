@@ -10,15 +10,15 @@ import type { Id } from '../../../../convex/_generated/dataModel';
 import { colors, radius, shadow, spacing, typography } from '../../../theme/tokens';
 import { useMe, useMyToken } from '../../../lib/identity';
 import { useCircle } from '../../../lib/useCircle';
-import { MAP_STYLE_URL, speedKmh, timeAgo } from '../../../lib/utils';
-import { batteryLabel, memberMood } from '../../../lib/memberStatus';
+import { MAP_STYLE_URL, timeAgo } from '../../../lib/utils';
+import { batteryLabel, memberMood, motionLabel } from '../../../lib/memberStatus';
+import { useNow } from '../../../hooks/useNow';
 import { roleLabel } from '../../../lib/roles';
 import { Button } from '../../../components/ui/Button';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Sheet } from '../../../components/ui/Sheet';
 import { StatPill } from '../../../components/ui/Bits';
 import { hapticError, useHaptics } from '../../../hooks/useHaptics';
-import type { MemberMood } from '../../../lib/memberStatus';
 
 export default function MemberDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -29,17 +29,14 @@ export default function MemberDetailScreen() {
   const { circle, members, loading } = useCircle();
   const haptic = useHaptics();
   const insets = useSafeAreaInsets();
+  const now = useNow();
 
   const member = members.find((m) => m._id === id);
   const crumbs = useQuery(
     api.presence.breadcrumbsForUser,
     token && id ? { token, userId: id as Id<'users'>, limit: 100 } : 'skip',
   );
-  const pending = useQuery(api.checkins.pendingForCircle, token ? { token } : 'skip');
-
-  const [asked, setAsked] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const requestCheckin = useMutation(api.checkins.request);
   const removeMember = useMutation(api.circles.removeMember);
 
   if (loading && !member) {
@@ -59,22 +56,11 @@ export default function MemberDetailScreen() {
     );
   }
 
-  const mood = memberMood(member);
+  const mood = memberMood(member, now);
   const points = (crumbs ?? []).slice().sort((a, b) => a.ts - b.ts);
-  const waiting = !!pending?.some((r) => r.targetId === id);
   const battery = batteryLabel(member);
-  const kmh = speedKmh(member.speed);
+  const motion = motionLabel(member.speed);
   const isOwner = !!circle && !!me && circle.ownerId === me._id;
-
-  const onAsk = async () => {
-    if (!token || waiting || asked) return;
-    try {
-      await requestCheckin({ token, targetId: id as Id<'users'> });
-      setAsked(true);
-    } catch {
-      setAsked(false);
-    }
-  };
 
   const onRemove = async () => {
     if (!token) return;
@@ -123,7 +109,7 @@ export default function MemberDetailScreen() {
         ) : (
           <StatPill text="No battery data" tint="off" />
         )}
-        <StatPill text={kmh != null ? `${kmh} km/h` : 'Resting'} tint={kmh != null ? 'ok' : 'off'} />
+        <StatPill text={motion} tint={mood.tint === 'off' ? 'off' : 'ok'} />
         <StatPill
           text={timeAgo(member.lastSeen)}
           tint={mood.tint === 'off' ? 'off' : 'ok'}
@@ -145,24 +131,6 @@ export default function MemberDetailScreen() {
             <Text style={styles.noMovementText}>No recent movement</Text>
           </View>
         )}
-      </View>
-
-      <View style={styles.actions}>
-        <View style={styles.action}>
-          <Button
-            label={waiting ? 'Waiting for reply…' : asked ? 'Asked' : 'Ask to check in'}
-            variant={asked || waiting ? 'secondary' : 'primary'}
-            disabled={asked || waiting}
-            onPress={onAsk}
-          />
-        </View>
-        <View style={styles.action}>
-          <Button
-            label="Message"
-            variant="secondary"
-            onPress={() => router.push({ pathname: '/chat', params: { to: id } })}
-          />
-        </View>
       </View>
 
       {isOwner && me && id !== me._id ? (
@@ -305,13 +273,6 @@ const styles = StyleSheet.create({
     gap: spacing.s,
   },
   noMovementText: { ...typography.small, color: colors.inkFaint },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.s,
-    paddingHorizontal: spacing.l,
-    paddingTop: spacing.l,
-  },
-  action: { flex: 1 },
   removeBtn: {
     alignSelf: 'center',
     marginTop: spacing.xl,

@@ -1,7 +1,7 @@
 # Nestly
 
 Your family, always within reach. Live location, speed, device status, places,
-check-ins, chat and SOS — in one cozy place, with a family of bloub avatars.
+check-ins and SOS — in one cozy place, with a family of bloub avatars.
 
 ## Stack
 
